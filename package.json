@@ -1,0 +1,14 @@
+{
+  "name": "vedant-kirana-store-pos",
+  "version": "1.0.0",
+  "description": "High-performance Kirana Store & POS Web App (10,500+ SKUs, Neon PostgreSQL JSONB, B-Tree Sub-50 Filter, Razorpay & UPI Gateway)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node database/seed_10500_items.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
+  }
+}

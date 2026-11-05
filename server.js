@@ -1,9 +1,15 @@
 /**
- * VEDANT KIRANA STORE & POS - EXPRESS + NEON POSTGRESQL SERVER
- * Supports:
- *  - Neon PostgreSQL JSONB queries with B-Tree index on ((payload->>'price')::int)
- *  - Automatic fallback to in-memory 10,500 SKUs if DATABASE_URL is not yet configured
- *  - Razorpay Order Creation & Verification API
+ * VEDANT KIRANA SHOP & POS - EXPRESS + NEON POSTGRESQL SERVER
+ * Features:
+ *  - High-performance Neon PostgreSQL JSONB catalog with B-Tree index on ((payload->>'price')::int)
+ *  - Customer Orders & POS Billing API with Neon DB persistence
+ *  - Dedicated Admin Panel Endpoints:
+ *      * GET /api/admin/orders (Live order feed from Neon DB)
+ *      * PATCH /api/admin/orders/:id/status (Update order status: Pending, Packed, Out for Delivery, Delivered)
+ *      * GET /api/admin/analytics (Live sales, revenue, and order status counts)
+ *      * POST /api/admin/products (Add new SKU to catalog)
+ *      * DELETE /api/admin/products/:sku (Remove SKU from catalog)
+ *  - Fallback in-memory catalog & order store if DATABASE_URL is temporarily unavailable
  */
 const express = require('express');
 const path = require('path');
@@ -19,7 +25,62 @@ const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
 
-const fallbackCatalog = generateCatalog(10500);
+// In-memory fallback stores
+let fallbackCatalog = generateCatalog(10500);
+let inMemoryOrders = [
+  {
+    order_id: 'ORD-8841',
+    customer_name: 'Rahul Khadse',
+    customer_phone: '9876543210',
+    customer_address: 'Flat 402, Green Valley Apartments, FC Road, Pune - 411005',
+    order_mode: 'Home Delivery',
+    payment_method: 'UPI (rahul@okicici)',
+    payment_ref: 'pay_P9kL82mN10xKirana',
+    status: 'PACKED', // NEW, PACKED, OUT_FOR_DELIVERY, DELIVERED, CANCELLED
+    total_mrp: 156,
+    total_amount: 138,
+    total_savings: 18,
+    created_at: new Date(Date.now() - 3600000).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+    items: [
+      { sku: 'SKU-00018', name: 'Maggi 2-Minute Masala Instant Noodles', unit: '70 g Single', price: 14, qty: 2 },
+      { sku: 'SKU-00002', name: 'Aashirvaad Chakki Fresh Whole Wheat Atta', unit: '1 kg', price: 48, qty: 1 },
+      { sku: 'SKU-00025', name: 'Amul Pasteurized Table Butter', unit: '100 g Butter', price: 62, qty: 1 }
+    ]
+  }
+];
+
+// Ensure kirana_orders table exists with status column in Neon DB
+async function ensureDbSchema() {
+  if (!pool) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kirana_orders (
+        order_id VARCHAR(64) PRIMARY KEY,
+        customer_name VARCHAR(120) DEFAULT 'Customer',
+        customer_phone VARCHAR(32) DEFAULT '',
+        customer_address TEXT DEFAULT '',
+        order_mode VARCHAR(32) DEFAULT 'Counter Pickup',
+        payment_method VARCHAR(64) NOT NULL,
+        payment_ref VARCHAR(128) NOT NULL,
+        status VARCHAR(32) DEFAULT 'NEW',
+        total_mrp INT NOT NULL,
+        total_amount INT NOT NULL,
+        total_savings INT NOT NULL,
+        items_payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    // Ensure status column exists if table was created earlier without it
+    await pool.query(`
+      ALTER TABLE kirana_orders ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'NEW';
+      ALTER TABLE kirana_orders ADD COLUMN IF NOT EXISTS customer_address TEXT DEFAULT '';
+    `);
+    console.log("✅ Neon DB kirana_orders table verified with status & address fields.");
+  } catch (err) {
+    console.error("Neon DB schema check warning:", err.message);
+  }
+}
+ensureDbSchema();
 
 // Health & DB Status Endpoint
 app.get('/api/status', async (req, res) => {
@@ -49,7 +110,7 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// High-Performance Catalog Search & Sub-50 Filter API
+// Product Catalog Search & Filtering API
 app.get('/api/products', async (req, res) => {
   const {
     q = '',
@@ -118,26 +179,24 @@ app.get('/api/products', async (req, res) => {
         items: dataRes.rows.map(r => r.payload)
       });
     } catch (err) {
-      console.error("Neon query error, falling back to memory:", err.message);
+      console.error("Neon query error, using fallback catalog:", err.message);
     }
   }
 
-  // Fallback In-Memory Query
+  // Fallback in-memory catalog
   const start = Date.now();
-  let filtered = fallbackCatalog;
+  let filtered = fallbackCatalog.filter(i => !i.hidden);
   if (under50 === 'true') filtered = filtered.filter(i => i.price < 50);
   if (maxPrice !== '') filtered = filtered.filter(i => i.price <= parseInt(maxPrice, 10));
   if (minPrice !== '') filtered = filtered.filter(i => i.price >= parseInt(minPrice, 10));
   if (category && category !== 'all') filtered = filtered.filter(i => i.category === category);
   if (brand && brand !== 'all') filtered = filtered.filter(i => i.brand === brand);
   if (q.trim()) {
-    const term = q.trim().toLowerCase();
-    filtered = filtered.filter(i =>
-      i.name.toLowerCase().includes(term) ||
-      i.brand.toLowerCase().includes(term) ||
-      i.hindi_tags.toLowerCase().includes(term) ||
-      i.sku.toLowerCase().includes(term)
-    );
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    filtered = filtered.filter(i => {
+      const blob = (i.sku + ' ' + i.name + ' ' + i.brand + ' ' + (i.hindi_tags || '')).toLowerCase();
+      return words.every(w => blob.includes(w));
+    });
   }
   if (sort === 'price_asc') filtered = [...filtered].sort((a, b) => a.price - b.price);
   if (sort === 'price_desc') filtered = [...filtered].sort((a, b) => b.price - a.price);
@@ -152,34 +211,230 @@ app.get('/api/products', async (req, res) => {
   });
 });
 
-// Checkout & Order Storage API
+// ============================================================================
+// CUSTOMER ORDERS & CHECKOUT API
+// ============================================================================
+
+// Place New Order (Customer Checkout)
 app.post('/api/orders', async (req, res) => {
   const order = req.body;
+  if (!order || !order.order_id) {
+    return res.status(400).json({ error: 'Invalid order payload' });
+  }
+
+  const orderRecord = {
+    order_id: order.order_id,
+    customer_name: order.customer_name || 'Customer',
+    customer_phone: order.customer_phone || '',
+    customer_address: order.customer_address || '',
+    order_mode: order.order_mode || 'Counter Pickup',
+    payment_method: order.payment_method || 'UPI',
+    payment_ref: order.payment_ref || ('pay_' + Date.now()),
+    status: order.status || 'NEW',
+    total_mrp: parseInt(order.total_mrp, 10) || 0,
+    total_amount: parseInt(order.total_amount, 10) || 0,
+    total_savings: parseInt(order.total_savings, 10) || 0,
+    items: order.items || [],
+    created_at: order.created_at || new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+  };
+
+  // Always store in memory for instant local feed
+  inMemoryOrders.unshift(orderRecord);
+
+  // Persist into Neon PostgreSQL
   if (pool) {
     try {
       await pool.query(
-        `INSERT INTO kirana_orders (order_id, customer_name, customer_phone, order_mode, payment_method, payment_ref, total_mrp, total_amount, total_savings, items_payload)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        `INSERT INTO kirana_orders (order_id, customer_name, customer_phone, customer_address, order_mode, payment_method, payment_ref, status, total_mrp, total_amount, total_savings, items_payload, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, NOW())
+         ON CONFLICT (order_id) DO UPDATE
+         SET status = EXCLUDED.status, items_payload = EXCLUDED.items_payload`,
         [
-          order.order_id,
-          order.customer_name || 'Walk-in Customer',
-          order.customer_phone || '',
-          order.order_mode || 'POS_COUNTER',
-          order.payment_method,
-          order.payment_ref,
-          order.total_mrp,
-          order.total_amount,
-          order.total_savings,
-          JSON.stringify(order.items || [])
+          orderRecord.order_id,
+          orderRecord.customer_name,
+          orderRecord.customer_phone,
+          orderRecord.customer_address,
+          orderRecord.order_mode,
+          orderRecord.payment_method,
+          orderRecord.payment_ref,
+          orderRecord.status,
+          orderRecord.total_mrp,
+          orderRecord.total_amount,
+          orderRecord.total_savings,
+          JSON.stringify(orderRecord.items)
         ]
       );
-    } catch (e) {
-      console.error("Order save warning:", e.message);
+    } catch (err) {
+      console.error("Neon DB Order Insert Warning:", err.message);
     }
   }
-  res.json({ status: 'ok', order_id: order.order_id });
+
+  console.log(`🛒 New Order Received: #${orderRecord.order_id} - ₹${orderRecord.total_amount} by ${orderRecord.customer_name}`);
+  res.json({ status: 'ok', order_id: orderRecord.order_id });
+});
+
+// ============================================================================
+// ADMIN PANEL ENDPOINTS (LIVE ORDERS, STATUS UPDATE, ANALYTICS & INVENTORY)
+// ============================================================================
+
+// 1. Live Orders Feed for Admin (Fetches from Neon DB, falls back to memory)
+app.get('/api/admin/orders', async (req, res) => {
+  if (pool) {
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          order_id,
+          customer_name,
+          customer_phone,
+          customer_address,
+          order_mode,
+          payment_method,
+          payment_ref,
+          COALESCE(status, 'NEW') AS status,
+          total_mrp,
+          total_amount,
+          total_savings,
+          items_payload AS items,
+          to_char(created_at, 'DD Mon YYYY, HH12:MI AM') AS created_at
+        FROM kirana_orders
+        ORDER BY created_at DESC
+        LIMIT 100
+      `);
+
+      // Merge any fresh in-memory orders that might have arrived recently
+      const dbIds = new Set(rows.map(r => r.order_id));
+      const freshMemory = inMemoryOrders.filter(o => !dbIds.has(o.order_id));
+      const combined = [...freshMemory, ...rows];
+
+      return res.json({ source: 'NEON_POSTGRES_DB', count: combined.length, orders: combined });
+    } catch (err) {
+      console.error("Admin orders fetch error, using memory:", err.message);
+    }
+  }
+
+  res.json({ source: 'IN_MEMORY_STORE', count: inMemoryOrders.length, orders: inMemoryOrders });
+});
+
+// 2. Update Order Status (NEW -> PACKED -> OUT_FOR_DELIVERY -> DELIVERED / CANCELLED)
+app.patch('/api/admin/orders/:id/status', async (req, res) => {
+  const orderId = req.params.id;
+  const { status } = req.body;
+  if (!status) return res.status(400).json({ error: 'Status is required' });
+
+  // Update in memory
+  const memoryOrder = inMemoryOrders.find(o => o.order_id === orderId);
+  if (memoryOrder) memoryOrder.status = status;
+
+  // Update in Neon DB
+  if (pool) {
+    try {
+      await pool.query(
+        `UPDATE kirana_orders SET status = $1 WHERE order_id = $2`,
+        [status, orderId]
+      );
+    } catch (err) {
+      console.error("Neon DB Status Update Error:", err.message);
+    }
+  }
+
+  console.log(`📦 Order #${orderId} status updated to: ${status}`);
+  res.json({ status: 'ok', order_id: orderId, updated_status: status });
+});
+
+// 3. Admin Analytics & Sales Metrics
+app.get('/api/admin/analytics', async (req, res) => {
+  let allOrders = inMemoryOrders;
+
+  if (pool) {
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          COUNT(*)::int AS total_orders,
+          COALESCE(SUM(total_amount), 0)::int AS total_revenue,
+          COUNT(*) FILTER (WHERE status = 'NEW')::int AS pending_orders,
+          COUNT(*) FILTER (WHERE status = 'PACKED')::int AS packed_orders,
+          COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS delivered_orders
+        FROM kirana_orders
+      `);
+      return res.json({ source: 'NEON_POSTGRES_DB', ...rows[0] });
+    } catch (err) {
+      console.error("Analytics error, calculating from memory:", err.message);
+    }
+  }
+
+  const totalRevenue = allOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const pendingOrders = allOrders.filter(o => o.status === 'NEW').length;
+  const packedOrders = allOrders.filter(o => o.status === 'PACKED' || o.status === 'OUT_FOR_DELIVERY').length;
+  const deliveredOrders = allOrders.filter(o => o.status === 'DELIVERED').length;
+
+  res.json({
+    source: 'IN_MEMORY_STORE',
+    total_orders: allOrders.length,
+    total_revenue: totalRevenue,
+    pending_orders: pendingOrders,
+    packed_orders: packedOrders,
+    delivered_orders: deliveredOrders
+  });
+});
+
+// 4. Admin Add Custom Item to Catalog
+app.post('/api/admin/products', async (req, res) => {
+  const item = req.body;
+  if (!item || !item.name || !item.price) {
+    return res.status(400).json({ error: 'Name and price are required' });
+  }
+
+  const sku = item.sku || ('SKU-' + String(fallbackCatalog.length + 1).padStart(5, '0'));
+  const fullItem = {
+    sku,
+    name: item.name,
+    brand: item.brand || 'Kirana Select',
+    category: item.category || 'staples',
+    subcategory: item.subcategory || 'Store Special',
+    unit: item.unit || '1 Pack',
+    price: parseInt(item.price, 10),
+    mrp: parseInt(item.mrp, 10) || parseInt(item.price, 10) + 5,
+    stock: parseInt(item.stock, 10) || 50,
+    rating: '4.8',
+    is_essential: true,
+    hindi_tags: item.hindi_tags || 'custom special'
+  };
+
+  fallbackCatalog.unshift(fullItem);
+
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO kirana_catalog (sku_code, payload)
+         VALUES ($1, $2::jsonb)
+         ON CONFLICT (sku_code) DO UPDATE SET payload = EXCLUDED.payload`,
+        [sku, JSON.stringify(fullItem)]
+      );
+    } catch (err) {
+      console.error("Neon DB Add Item Warning:", err.message);
+    }
+  }
+
+  res.json({ status: 'ok', item: fullItem });
+});
+
+// 5. Admin Remove Item from Catalog
+app.delete('/api/admin/products/:sku', async (req, res) => {
+  const { sku } = req.params;
+  const target = fallbackCatalog.find(i => i.sku === sku);
+  if (target) target.hidden = true;
+
+  if (pool) {
+    try {
+      await pool.query(`DELETE FROM kirana_catalog WHERE sku_code = $1`, [sku]);
+    } catch (err) {
+      console.error("Neon DB Delete Item Warning:", err.message);
+    }
+  }
+
+  res.json({ status: 'ok', removed_sku: sku });
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Vedant Kirana Store & POS running on http://localhost:${PORT}`);
+  console.log(`✅ Kirana Shop & POS Server running on http://localhost:${PORT}`);
 });

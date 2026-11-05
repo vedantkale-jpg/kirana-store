@@ -238,7 +238,15 @@
                 placeholder="Search any item: Atta, Dal, Dairy Milk, Maggi, Amul, Tea, Soap..."
                 class="w-full pl-11 pr-28 py-2.5 bg-slate-100 hover:bg-slate-100/80 focus:bg-white rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm text-slate-800 placeholder-slate-400 outline-none transition"
               />
-              <button id="btnClearSearch" type="button" class="hidden absolute right-20 text-xs text-slate-400 hover:text-slate-700 px-1.5 py-0.5 font-bold">
+              <button
+                    id="btnVoiceSearch"
+                    type="button"
+                    title="Voice Search (Click and speak)"
+                    class="absolute right-9 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 flex items-center justify-center transition text-sm select-none"
+                  >
+                    🎤
+                  </button>
+                  <button id="btnClearSearch" type="button" class="hidden absolute right-20 text-xs text-slate-400 hover:text-slate-700 px-1.5 py-0.5 font-bold">
                 ✕
               </button>
               <button id="btnSearchSubmit" type="submit" class="absolute right-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
@@ -460,7 +468,11 @@
 
         <div class="flex items-center gap-2">
           <!-- Refresh Feed Button -->
-          <button id="btnAdminManualRefresh" type="button" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 flex items-center gap-1.5 transition">
+          <button id="btnExportOrdersCsv" type="button" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white flex items-center gap-1.5 transition shadow">
+                <span>📊</span>
+                <span>Export to Excel (.csv)</span>
+              </button>
+              <button id="btnAdminManualRefresh" type="button" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 flex items-center gap-1.5 transition">
             <span>🔄 Sync Now</span>
           </button>
           <!-- Add Item Button -->
@@ -502,6 +514,20 @@
     </div>
 
     <!-- Admin Sub-Navigation Tabs: Live Orders Feed vs Inventory & Stock vs Customer Support Tickets -->
+    <!-- Low Stock Alert Dashboard (Real-time Inventory Warning) -->
+    <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4">
+      <div id="adminLowStockAlertBox" class="hidden bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 space-y-2">
+        <div class="flex items-center justify-between text-xs font-bold text-rose-300">
+          <div class="flex items-center gap-2">
+            <span>⚠️</span>
+            <span class="text-sm">Low Stock Alert Dashboard</span>
+            <span class="text-[10px] text-slate-400">(Items with &le; 10 units in stock)</span>
+          </div>
+          <span id="lowStockCountBadge" class="bg-rose-500 text-white px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold">0 Items</span>
+        </div>
+        <div id="lowStockItemsList" class="flex flex-wrap gap-2 text-xs pt-1 max-h-36 overflow-y-auto"></div>
+      </div>
+    </div>
     <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-5">
       <div class="flex items-center gap-2 border-b border-slate-800 pb-2 text-xs font-extrabold">
         <button id="adminTabOrders" type="button" class="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 flex items-center gap-2 shadow transition">
@@ -710,27 +736,63 @@
 
     <!-- Profile Tab 1: Address -->
     <div id="profTabAddress" class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-      <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-2.5">
-        <div class="font-extrabold text-slate-800 text-sm">👤 Personal Details</div>
-        <div>
-          <label class="block text-slate-500 font-semibold mb-1">Full Name</label>
-          <input id="profEditName" type="text" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 outline-none focus:border-emerald-500" />
+      <!-- Saved Multiple Addresses List -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between font-bold text-slate-800">
+          <span>🏠 Saved Delivery Addresses</span>
+          <button id="btnToggleNewAddrForm" type="button" class="text-emerald-700 font-bold hover:underline text-xs">+ Add New</button>
         </div>
-        <div>
-          <label class="block text-slate-500 font-semibold mb-1">Mobile Number (10 Digits)</label>
-          <input id="profEditPhone" type="tel" maxlength="10" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 outline-none focus:border-emerald-500" />
-        </div>
+        <div id="savedAddressesList" class="space-y-2"></div>
       </div>
 
-      <div class="bg-emerald-50/60 rounded-2xl p-3.5 border border-emerald-200 space-y-2.5">
-        <div class="flex items-center justify-between">
-          <span class="font-extrabold text-emerald-950 text-sm">📍 Delivery Address</span>
-          <span class="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">Default</span>
+      <!-- Add New Address Form Modal / Box -->
+      <form id="formAddNewAddress" class="hidden bg-slate-50 border border-emerald-300 rounded-2xl p-3.5 space-y-2.5">
+        <div class="font-bold text-emerald-800 text-xs flex justify-between items-center">
+          <span>➕ Add Delivery Address</span>
+          <button id="btnCancelNewAddr" type="button" class="text-slate-400 hover:text-slate-600">✕</button>
         </div>
-        <textarea id="profEditAddress" rows="3" placeholder="Enter delivery address (House/Flat No, Area, City, Pincode)" class="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 text-slate-800 outline-none focus:border-emerald-600"></textarea>
-        <button id="btnSaveProfileDetails" type="button" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold transition shadow-xs">
-          💾 Save Profile &amp; Address
-        </button>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-semibold text-slate-600 mb-0.5">Address Label</label>
+            <select id="newAddrTitle" class="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold">
+              <option value="Home">Home</option>
+              <option value="Work">Work / Office</option>
+              <option value="Shop">Shop / Store</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-600 mb-0.5">Pincode</label>
+            <input id="newAddrPincode" type="text" maxlength="6" placeholder="e.g. 411005" class="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs" />
+          </div>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-0.5">Flat, House no., Street &amp; Landmark *</label>
+          <textarea id="newAddrStreet" rows="2" required placeholder="Complete delivery address..." class="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs"></textarea>
+        </div>
+        <div class="flex items-center justify-between pt-1">
+          <label class="flex items-center gap-1.5 text-slate-600 cursor-pointer">
+            <input id="newAddrDefaultCheck" type="checkbox" checked class="accent-emerald-600" />
+            <span>Set as default address</span>
+          </label>
+          <button type="submit" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs">
+            Save Address
+          </button>
+        </div>
+      </form>
+
+      <!-- Profile Edit Name & Contact -->
+      <div class="border-t border-slate-200 pt-3 space-y-2.5">
+        <div class="font-bold text-slate-800">👤 Personal Details</div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-0.5">Full Name</label>
+          <input id="profEditName" type="text" class="w-full border border-slate-300 rounded-xl px-3 py-1.5 font-medium" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-0.5">Mobile Number (Login ID)</label>
+          <input id="profEditPhone" type="tel" readonly class="w-full border border-slate-200 bg-slate-100 rounded-xl px-3 py-1.5 font-medium text-slate-500 cursor-not-allowed" />
+        </div>
+        <input id="profEditAddress" type="hidden" />
       </div>
     </div>
 
@@ -827,10 +889,14 @@
           <span>Kirana Wholesale Discount</span>
           <span id="billDiscountTotal">- ₹0</span>
         </div>
-        <div class="flex justify-between text-slate-500">
-          <span>GST &amp; Local Delivery</span>
-          <span class="text-emerald-600 font-semibold">FREE</span>
-        </div>
+        <div id="rowCouponDiscount" class="hidden flex justify-between text-emerald-700 font-bold text-xs">
+              <span>Coupon Discount</span>
+              <span id="billCouponDiscount">-₹0</span>
+            </div>
+            <div class="flex justify-between text-slate-600 text-xs font-semibold">
+              <span>Delivery Charge</span>
+              <span id="billDeliveryFee" class="text-emerald-700 font-bold">FREE (₹0)</span>
+            </div>
         <div class="border-t border-slate-200 pt-1.5 flex justify-between text-sm font-extrabold text-slate-900">
           <span>To Pay (Net Payable)</span>
           <span id="billGrandTotal" class="text-base text-emerald-700">₹0</span>
@@ -1387,6 +1453,7 @@
         document.getElementById('mainAppWrapper').classList.remove('hidden');
 
         syncCustomerProfileUI();
+        fetchCustomerAddresses();
         renderAll();
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
@@ -1562,6 +1629,7 @@
 
         fetchAdminOrders();
         fetchAdminAnalytics();
+        fetchAdminLowStock();
         renderAdminInventory();
         startAdminLiveSync();
         showToast('🛡️ Welcome Vedant! Shop Admin Console Activated.');
@@ -1590,6 +1658,7 @@
           if (state.isAdminLoggedIn) {
             fetchAdminOrders(true);
             fetchAdminAnalytics();
+            fetchAdminLowStock();
           }
         }, 4000);
       }
@@ -2075,7 +2144,7 @@
               <h3 class="text-xs sm:text-sm font-bold text-slate-800 line-clamp-2 leading-snug min-h-[2.4rem]">${item.name}</h3>
               <div class="mt-2 flex items-center justify-between gap-1">
                 <span class="inline-block text-[11px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">${item.unit}</span>
-                <span class="text-[10px] text-emerald-600 font-medium">In Stock</span>
+                ${(item.stock !== undefined && item.stock <= 0) ? '<span class="text-[10px] text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">Out of Stock</span>' : '<span class="text-[10px] text-emerald-600 font-medium">In Stock</span>'}
               </div>
             </div>
 
@@ -2084,7 +2153,11 @@
                 <div class="text-sm sm:text-base font-extrabold text-slate-900 leading-none">₹${item.price}</div>
                 <div class="text-[11px] text-slate-400 line-through mt-0.5">MRP ₹${item.mrp}</div>
               </div>
-              ${qty === 0 ? `
+              ${(item.stock !== undefined && item.stock <= 0) ? `
+                <button type="button" disabled class="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-400 font-bold text-xs cursor-not-allowed select-none">
+                  Out of Stock
+                </button>
+              ` : qty === 0 ? `
                 <button type="button" data-add-sku="${item.sku}" class="btn-add-item px-4 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-600 font-extrabold text-xs tracking-wide transition shadow-2xs">
                   ADD
                 </button>
@@ -2116,6 +2189,10 @@
         if (!item) return;
         const current = state.cart[sku] ? state.cart[sku].qty : 0;
         const next = current + delta;
+        if (delta > 0 && item.stock !== undefined && next > item.stock) {
+          showToast(`⚠️ Only ${item.stock} units available in stock!`);
+          return;
+        }
         if (next <= 0) delete state.cart[sku];
         else state.cart[sku] = { item, qty: next };
 
@@ -2136,16 +2213,61 @@
         });
         const totalSavings = Math.max(0, totalMrp - totalPrice);
 
+        // Smart Delivery Fee (₹199 threshold)
+        const isHomeDelivery = state.orderMode === 'HOME_DELIVERY';
+        if (isHomeDelivery) {
+          if (totalPrice >= 199 || (state.appliedCoupon && state.appliedCoupon.code === 'FREEDEL')) {
+            state.deliveryFee = 0;
+            const titleEl = document.getElementById('deliveryThresholdTitle');
+            if (titleEl) {
+              titleEl.textContent = '🎉 FREE Home Delivery Unlocked!';
+              document.getElementById('deliveryThresholdBadge').textContent = 'FREE';
+              document.getElementById('deliveryProgressBar').style.width = '100%';
+              document.getElementById('deliveryProgressText').textContent = 'Congratulations! You unlocked free delivery on orders above ₹199.';
+              document.getElementById('billDeliveryFee').textContent = 'FREE (₹0)';
+            }
+          } else {
+            state.deliveryFee = 25;
+            const needed = 199 - totalPrice;
+            const titleEl = document.getElementById('deliveryThresholdTitle');
+            if (titleEl) {
+              titleEl.textContent = '🚚 Local Home Delivery';
+              document.getElementById('deliveryThresholdBadge').textContent = '₹25 Fee';
+              document.getElementById('deliveryProgressBar').style.width = Math.min(100, Math.round((totalPrice / 199) * 100)) + '%';
+              document.getElementById('deliveryProgressText').textContent = `Add ₹${needed} more to get FREE Local Delivery!`;
+              document.getElementById('billDeliveryFee').textContent = '₹25';
+            }
+          }
+        } else {
+          state.deliveryFee = 0;
+          const feeEl = document.getElementById('billDeliveryFee');
+          if (feeEl) feeEl.textContent = 'FREE (Counter Pickup)';
+        }
+
+        // Coupon discount calculation
+        let couponDiscount = 0;
+        const rowCoupon = document.getElementById('rowCouponDiscount');
+        if (state.appliedCoupon) {
+          couponDiscount = state.appliedCoupon.discount || 0;
+          if (rowCoupon) {
+            rowCoupon.classList.remove('hidden');
+            document.getElementById('billCouponDiscount').textContent = `- ₹${couponDiscount.toLocaleString()}`;
+          }
+        } else {
+          if (rowCoupon) rowCoupon.classList.add('hidden');
+        }
+
+        const grandTotal = Math.max(0, totalPrice - couponDiscount + (isHomeDelivery ? state.deliveryFee : 0));
+
         document.getElementById('headerCartCount').textContent = `${totalQty} item${totalQty === 1 ? '' : 's'}`;
         document.getElementById('headerCartTotal').textContent = `₹${totalPrice.toLocaleString()}`;
         document.getElementById('drawerItemCountText').textContent = `${totalQty} item${totalQty === 1 ? '' : 's'} in cart`;
 
         document.getElementById('billMrpTotal').textContent = `₹${totalMrp.toLocaleString()}`;
-        document.getElementById('billDiscountTotal').textContent = `- ₹${totalSavings.toLocaleString()}`;
-        document.getElementById('billGrandTotal').textContent = `₹${totalPrice.toLocaleString()}`;
-        document.getElementById('btnPayRazorpayAmt').textContent = `₹${totalPrice.toLocaleString()} →`;
-
-        const listEl = document.getElementById('cartItemsList');
+        document.getElementById('billDiscountTotal').textContent = `- ₹${(totalSavings + couponDiscount).toLocaleString()}`;
+        document.getElementById('billGrandTotal').textContent = `₹${grandTotal.toLocaleString()}`;
+        document.getElementById('btnPayRazorpayAmt').textContent = `₹${grandTotal.toLocaleString()} →`;
+const listEl = document.getElementById('cartItemsList');
         if (entries.length === 0) {
           listEl.innerHTML = `
             <div class="text-center py-12 text-slate-400">
@@ -2269,34 +2391,36 @@
         const custName = document.getElementById('custNameInput').value.trim() || state.user.name || 'Customer';
         const custAddress = document.getElementById('custAddressInput').value.trim() || state.user.address || '';
 
+        const discountAmt = state.appliedCoupon ? state.appliedCoupon.discount : 0;
+        const deliveryFeeAmt = state.orderMode === 'HOME_DELIVERY' ? (state.deliveryFee || 0) : 0;
+        const finalPayable = Math.max(0, totalPrice - discountAmt + deliveryFeeAmt);
+
         const newOrder = {
           order_id: orderId,
           customer_name: custName,
           customer_phone: custPhone,
           customer_address: custAddress,
           order_mode: state.orderMode === 'HOME_DELIVERY' ? 'Home Delivery' : 'Counter Pickup',
-          payment_method: methodMap[state.activePayTab] || 'UPI',
+          payment_method: methodMap[state.paymentTab] || 'UPI',
           payment_ref: payRef,
           status: 'NEW',
           total_mrp: totalMrp,
-          total_amount: totalPrice,
-          total_savings: Math.max(0, totalMrp - totalPrice),
-          created_at: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
-          items: orderItems
+          total_amount: finalPayable,
+          total_savings: (totalMrp - totalPrice) + discountAmt,
+          coupon_applied: state.appliedCoupon ? state.appliedCoupon.code : '',
+          discount_amount: discountAmt,
+          delivery_fee: deliveryFeeAmt,
+          items: orderItems,
+          created_at: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
         };
 
-        // 1. Send Order to Backend API (POST /api/orders) to persist in Neon DB
-        try {
-          await fetch('/api/orders', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newOrder)
-          });
-        } catch (e) {
-          console.error("Order post error:", e);
-        }
+        // Deduct stock locally so UI reflects out-of-stock immediately
+        orderItems.forEach(it => {
+          const target = catalog.find(i => i.sku === it.sku);
+          if (target) target.stock = Math.max(0, (target.stock || 50) - it.qty);
+        });
+        state.appliedCoupon = null;
 
-        // 2. Save locally for immediate feedback
         state.orders.unshift(newOrder);
         state.adminLiveOrders.unshift(newOrder);
         state.cart = {};
@@ -2413,10 +2537,36 @@
                 </div>
               </div>
               <div class="flex flex-wrap gap-1.5">${itemsHtml}</div>
+              ${ord.status === 'NEW' ? `
+                <div class="pt-1 flex justify-end">
+                  <button type="button" data-cust-cancel-order="${ord.order_id}" class="text-xs text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1 rounded-xl font-bold transition flex items-center gap-1">
+                    <span>✕</span>
+                    <span>Cancel Order</span>
+                  </button>
+                </div>
+              ` : ''}
               ${trackerHtml}
             </div>
           `;
         }).join('');
+      profOrders.querySelectorAll('[data-cust-cancel-order]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const orderId = btn.getAttribute('data-cust-cancel-order');
+            if (!confirm(`Are you sure you want to cancel order #${orderId}?`)) return;
+            try {
+              const res = await fetch(`/api/orders/${orderId}/cancel`, { method: 'PATCH' });
+              const data = await res.json();
+              if (res.ok) {
+                showToast(`✓ Order #${orderId} successfully cancelled.`);
+                fetchCustomerOrders(state.user.phone);
+              } else {
+                showToast('❌ ' + (data.error || 'Could not cancel order'));
+              }
+            } catch (e) {
+              showToast('Error cancelling order.');
+            }
+          });
+        });
       }
 
       function openCartDrawer() {
@@ -2561,6 +2711,214 @@
         }
       });
 
+      // Voice Search (Speech-to-Text via Web Speech API)
+      const btnVoice = document.getElementById('btnVoiceSearch');
+      if (btnVoice) {
+        btnVoice.addEventListener('click', () => {
+          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (!SpeechRecognition) {
+            showToast('⚠️ Voice search is not supported in this browser. Please use Chrome / Edge.');
+            return;
+          }
+          const recognition = new SpeechRecognition();
+          recognition.lang = 'en-IN';
+          recognition.interimResults = false;
+          recognition.maxAlternatives = 1;
+
+          btnVoice.classList.add('text-rose-500', 'animate-pulse');
+          showToast('🎙️ Listening... Speak product name (e.g. Atta, Maggi, Dairy Milk)');
+
+          recognition.onresult = (e) => {
+            const speechText = e.results[0][0].transcript;
+            document.getElementById('searchInput').value = speechText;
+            state.search = speechText;
+            state.page = 1;
+            renderProducts();
+            showToast(`🎙️ Searched: "${speechText}"`);
+          };
+
+          recognition.onerror = () => {
+            showToast('Voice search cancelled or microphone permission denied.');
+          };
+
+          recognition.onend = () => {
+            btnVoice.classList.remove('text-rose-500', 'animate-pulse');
+          };
+
+          recognition.start();
+        });
+      }
+
+      // Coupon Apply & Remove Event Handlers
+      document.getElementById('btnApplyCoupon').addEventListener('click', async () => {
+        const code = document.getElementById('couponCodeInput').value.trim();
+        if (!code) {
+          showToast('⚠️ Please enter a coupon code (e.g. KIRANA50 / WELCOME20)');
+          return;
+        }
+
+        const entries = Object.values(state.cart);
+        const cartSubtotal = entries.reduce((sum, e) => sum + (e.item.price * e.qty), 0);
+
+        try {
+          const res = await fetch('/api/coupons/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, cartTotal: cartSubtotal })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            showToast('❌ ' + (data.error || 'Invalid coupon'));
+            return;
+          }
+
+          state.appliedCoupon = data;
+          showToast(data.message);
+          renderCartUI();
+        } catch (e) {
+          showToast('Error applying coupon.');
+        }
+      });
+
+      document.getElementById('btnRemoveCoupon').addEventListener('click', () => {
+        state.appliedCoupon = null;
+        document.getElementById('couponCodeInput').value = '';
+        renderCartUI();
+        showToast('Coupon removed.');
+      });
+
+      // Multiple Delivery Addresses API & UI
+      async function fetchCustomerAddresses() {
+        if (!state.user || !state.user.phone) return;
+        try {
+          const res = await fetch('/api/customer/addresses?phone=' + encodeURIComponent(state.user.phone));
+          if (res.ok) {
+            const data = await res.json();
+            state.customerAddresses = data.addresses || [];
+            renderCustomerAddresses();
+          }
+        } catch (e) {}
+      }
+
+      function renderCustomerAddresses() {
+        const container = document.getElementById('savedAddressesList');
+        if (!container) return;
+        if (state.customerAddresses.length === 0) {
+          container.innerHTML = `<div class="text-slate-400 text-xs py-2 italic">No saved addresses yet. Click "+ Add New" to save your home or work address.</div>`;
+          return;
+        }
+
+        container.innerHTML = state.customerAddresses.map(addr => `
+          <div class="bg-white border ${addr.is_default ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-200'} rounded-xl p-3 flex items-start justify-between gap-2 shadow-2xs">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-slate-800 text-xs">${addr.title}</span>
+                ${addr.is_default ? `<span class="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.2 rounded-full">Default</span>` : ''}
+              </div>
+              <p class="text-slate-600 text-[11px] mt-1 leading-snug">${addr.street_address}${addr.pincode ? ' - ' + addr.pincode : ''}</p>
+            </div>
+            <div class="flex items-center gap-1">
+              <button type="button" data-use-addr="${addr.id}" class="text-[10px] text-emerald-700 font-bold bg-emerald-100 hover:bg-emerald-200 px-2 py-1 rounded-lg">Use</button>
+              <button type="button" data-del-addr="${addr.id}" class="text-[10px] text-rose-500 hover:text-rose-700 px-1.5 py-1">✕</button>
+            </div>
+          </div>
+        `).join('');
+
+        container.querySelectorAll('[data-use-addr]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = parseInt(btn.getAttribute('data-use-addr'), 10);
+            const found = state.customerAddresses.find(a => a.id === id);
+            if (found) {
+              state.user.address = found.street_address + (found.pincode ? ' - ' + found.pincode : '');
+              document.getElementById('custAddressInput').value = state.user.address;
+              document.getElementById('headerAddressSnippet').textContent = 'Deliver to: ' + state.user.address;
+              showToast('📍 Selected ' + found.title + ' address for delivery!');
+            }
+          });
+        });
+
+        container.querySelectorAll('[data-del-addr]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-del-addr');
+            try {
+              await fetch('/api/customer/addresses/' + id, { method: 'DELETE' });
+              state.customerAddresses = state.customerAddresses.filter(a => String(a.id) !== String(id));
+              renderCustomerAddresses();
+              showToast('Address deleted.');
+            } catch (e) {}
+          });
+        });
+      }
+
+      document.getElementById('btnToggleNewAddrForm').addEventListener('click', () => {
+        document.getElementById('formAddNewAddress').classList.toggle('hidden');
+      });
+      document.getElementById('btnCancelNewAddr').addEventListener('click', () => {
+        document.getElementById('formAddNewAddress').classList.add('hidden');
+      });
+
+      document.getElementById('formAddNewAddress').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('newAddrTitle').value;
+        const street_address = document.getElementById('newAddrStreet').value.trim();
+        const pincode = document.getElementById('newAddrPincode').value.trim();
+        const is_default = document.getElementById('newAddrDefaultCheck').checked;
+
+        if (!street_address) {
+          showToast('⚠️ Please enter delivery address details.');
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/customer/addresses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: state.user.phone, title, street_address, pincode, is_default })
+          });
+          if (res.ok) {
+            document.getElementById('newAddrStreet').value = '';
+            document.getElementById('newAddrPincode').value = '';
+            document.getElementById('formAddNewAddress').classList.add('hidden');
+            fetchCustomerAddresses();
+            showToast('✅ Address saved successfully!');
+          }
+        } catch (e) {
+          showToast('Error saving address.');
+        }
+      });
+
+      // Admin Export to CSV handler
+      document.getElementById('btnExportOrdersCsv').addEventListener('click', () => {
+        const date = state.adminDateFilter || 'all';
+        showToast('📊 Exporting orders to Excel CSV file...');
+        window.location.href = `/api/admin/orders/export?date=${encodeURIComponent(date)}`;
+      });
+
+      // Admin Low Stock Fetcher
+      async function fetchAdminLowStock() {
+        try {
+          const res = await fetch('/api/admin/low-stock');
+          if (res.ok) {
+            const data = await res.json();
+            const box = document.getElementById('adminLowStockAlertBox');
+            const badge = document.getElementById('lowStockCountBadge');
+            const list = document.getElementById('lowStockItemsList');
+
+            if (data.count > 0) {
+              box.classList.remove('hidden');
+              badge.textContent = data.count + ' Items';
+              list.innerHTML = data.low_stock_items.map(it => `
+                <div class="bg-rose-950/70 border border-rose-500/40 rounded-xl px-2.5 py-1 text-slate-200 text-xs flex items-center gap-1.5">
+                  <strong class="text-rose-400 font-bold">${it.stock} Left</strong> • ${it.name} (${it.unit})
+                </div>
+              `).join('');
+            } else {
+              box.classList.add('hidden');
+            }
+          }
+        } catch (e) {}
+      }
+
       // Cart Controls
       document.getElementById('btnOpenCart').addEventListener('click', openCartDrawer);
       document.getElementById('btnCloseCart').addEventListener('click', closeCartDrawer);
@@ -2577,11 +2935,13 @@
         state.orderMode = 'POS_COUNTER';
         btnModePos.className = 'py-1.5 rounded-lg bg-white text-slate-900 shadow-xs transition';
         btnModeDelivery.className = 'py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition';
+        renderCartUI();
       });
       btnModeDelivery.addEventListener('click', () => {
         state.orderMode = 'HOME_DELIVERY';
         btnModeDelivery.className = 'py-1.5 rounded-lg bg-white text-slate-900 shadow-xs transition';
         btnModePos.className = 'py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition';
+        renderCartUI();
       });
 
       // Payment Modal Controls

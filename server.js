@@ -68,6 +68,16 @@ let inMemoryCategories = [
   { slug: 'household', name: 'Soaps & Cleaning', icon: '🧼' }
 ];
 let inMemoryAuditLogs = [];
+let inMemoryCoupons = [
+  { code: 'KIRANA50', discount_type: 'FLAT', discount_value: 50, min_order_value: 299, description: 'Flat ₹50 OFF on orders above ₹299', is_active: true },
+  { code: 'WELCOME20', discount_type: 'PERCENT', discount_value: 20, max_discount: 100, min_order_value: 199, description: '20% OFF (Up to ₹100) on orders above ₹199', is_active: true },
+  { code: 'SAVER100', discount_type: 'FLAT', discount_value: 100, min_order_value: 699, description: 'Mega Saver: Flat ₹100 OFF on orders above ₹699', is_active: true },
+  { code: 'FREEDEL', discount_type: 'FLAT', discount_value: 25, min_order_value: 0, description: 'Free Delivery coupon (Flat ₹25 OFF)', is_active: true }
+];
+let inMemoryAddresses = [
+  { id: 1, customer_phone: '7420828705', title: 'Home', street_address: 'Flat 302, Sai Residency, FC Road, Pune', city: 'Pune', pincode: '411005', is_default: true }
+];
+
 
 // Ensure all Neon DB tables exist
 async function ensureDbSchema() {
@@ -118,7 +128,62 @@ async function ensureDbSchema() {
       );
     `);
 
-    // 4. Security Audit table (Failed 2FA attempts / alerts)
+    // 4. Multiple Addresses table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kirana_addresses (
+        id SERIAL PRIMARY KEY,
+        customer_phone VARCHAR(20) NOT NULL,
+        title VARCHAR(50) DEFAULT 'Home',
+        street_address TEXT NOT NULL,
+        city VARCHAR(100) DEFAULT 'Pune',
+        pincode VARCHAR(10) DEFAULT '',
+        is_default BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // 5. Normalized Order Items table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kirana_order_items (
+        id SERIAL PRIMARY KEY,
+        order_id VARCHAR(64) NOT NULL,
+        sku VARCHAR(64) NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        unit VARCHAR(64),
+        price INT NOT NULL,
+        qty INT NOT NULL,
+        subtotal INT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON kirana_order_items(order_id);
+    `);
+
+    // 6. Coupons & Discounts table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kirana_coupons (
+        code VARCHAR(32) PRIMARY KEY,
+        discount_type VARCHAR(16) DEFAULT 'FLAT',
+        discount_value INT NOT NULL,
+        max_discount INT DEFAULT 0,
+        min_order_value INT DEFAULT 0,
+        description TEXT,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Seed default coupons if table is empty
+    const couponCheck = await pool.query(`SELECT COUNT(*)::int AS count FROM kirana_coupons`);
+    if (couponCheck.rows[0].count === 0) {
+      for (const cp of inMemoryCoupons) {
+        await pool.query(
+          `INSERT INTO kirana_coupons (code, discount_type, discount_value, max_discount, min_order_value, description, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+          [cp.code, cp.discount_type, cp.discount_value, cp.max_discount || 0, cp.min_order_value, cp.description, true]
+        );
+      }
+    }
+
+    // 7. Security Audit table (Failed 2FA attempts / alerts)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS kirana_security_audit (
         id SERIAL PRIMARY KEY,
@@ -449,7 +514,7 @@ app.get('/api/products', async (req, res) => {
 // CUSTOMER ORDERS & CHECKOUT API
 // ============================================================================
 
-// 1. Place New Order
+// 1. Place New Order (With Real Inventory Deduction & Normalized Items Table)
 app.post('/api/orders', async (req, res) => {
   const order = req.body;
   if (!order || !order.order_id) {
@@ -468,14 +533,26 @@ app.post('/api/orders', async (req, res) => {
     total_mrp: parseInt(order.total_mrp, 10) || 0,
     total_amount: parseInt(order.total_amount, 10) || 0,
     total_savings: parseInt(order.total_savings, 10) || 0,
+    coupon_applied: order.coupon_applied || '',
+    discount_amount: parseInt(order.discount_amount, 10) || 0,
+    delivery_fee: parseInt(order.delivery_fee, 10) || 0,
     items: order.items || [],
     created_at: order.created_at || new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
   };
 
   inMemoryOrders.unshift(orderRecord);
 
+  // In-memory inventory deduction
+  for (const it of orderRecord.items) {
+    const target = fallbackCatalog.find(i => i.sku === it.sku);
+    if (target) {
+      target.stock = Math.max(0, (target.stock || 50) - (it.qty || 1));
+    }
+  }
+
   if (pool) {
     try {
+      // 1. Insert order record
       await pool.query(
         `INSERT INTO kirana_orders (order_id, customer_name, customer_phone, customer_address, order_mode, payment_method, payment_ref, status, total_mrp, total_amount, total_savings, items_payload, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, NOW())
@@ -496,7 +573,34 @@ app.post('/api/orders', async (req, res) => {
           JSON.stringify(orderRecord.items)
         ]
       );
-      console.log(`✅ Order #${orderRecord.order_id} successfully saved to Neon PostgreSQL table kirana_orders!`);
+
+      // 2. Insert normalized items and deduct stock in Neon DB
+      for (const it of orderRecord.items) {
+        const itemQty = it.qty || 1;
+        const itemPrice = it.price || 0;
+        const subtotal = itemQty * itemPrice;
+
+        // Insert into kirana_order_items
+        await pool.query(
+          `INSERT INTO kirana_order_items (order_id, sku, item_name, unit, price, qty, subtotal)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [orderRecord.order_id, it.sku || 'SKU-CUSTOM', it.name, it.unit || '1 Pack', itemPrice, itemQty, subtotal]
+        );
+
+        // Deduct inventory in Neon kirana_catalog table
+        await pool.query(
+          `UPDATE kirana_catalog
+           SET payload = jsonb_set(
+             payload,
+             '{stock}',
+             to_jsonb(GREATEST(0, COALESCE((payload->>'stock')::int, 50) - $1::int))
+           )
+           WHERE sku_code = $2`,
+          [itemQty, it.sku]
+        );
+      }
+
+      console.log(`✅ Order #${orderRecord.order_id} recorded with inventory deduction & normalized items in Neon DB!`);
     } catch (err) {
       console.error("❌ Neon DB Order Insert Error:", err.message);
     }
@@ -807,6 +911,250 @@ app.delete('/api/admin/orders/:id', async (req, res) => {
   }
 
   res.json({ status: 'ok', deleted_order_id: orderId });
+});
+
+// ============================================================================
+// COUPONS & DISCOUNTS API
+// ============================================================================
+app.post('/api/coupons/apply', async (req, res) => {
+  const { code, cartTotal } = req.body;
+  if (!code) return res.status(400).json({ error: 'Please enter a coupon code' });
+  const cleanCode = code.trim().toUpperCase();
+  const total = parseInt(cartTotal, 10) || 0;
+
+  let coupon = null;
+  if (pool) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT * FROM kirana_coupons WHERE UPPER(code) = $1 AND is_active = TRUE`,
+        [cleanCode]
+      );
+      if (rows.length > 0) coupon = rows[0];
+    } catch (e) {}
+  }
+  if (!coupon) {
+    coupon = inMemoryCoupons.find(c => c.code.toUpperCase() === cleanCode && c.is_active);
+  }
+
+  if (!coupon) {
+    return res.status(404).json({ error: 'Invalid coupon code or expired.' });
+  }
+
+  if (total < coupon.min_order_value) {
+    return res.status(400).json({
+      error: `Minimum order value for ${coupon.code} is ₹${coupon.min_order_value}. Add ₹${coupon.min_order_value - total} more items!`
+    });
+  }
+
+  let discount = 0;
+  if (coupon.discount_type === 'FLAT') {
+    discount = Math.min(total, coupon.discount_value);
+  } else if (coupon.discount_type === 'PERCENT') {
+    discount = Math.round((total * coupon.discount_value) / 100);
+    if (coupon.max_discount) discount = Math.min(discount, coupon.max_discount);
+  }
+
+  res.json({
+    status: 'ok',
+    code: coupon.code,
+    discount,
+    description: coupon.description,
+    message: `🎉 Coupon ${coupon.code} Applied! You saved ₹${discount}.`
+  });
+});
+
+app.get('/api/coupons', async (req, res) => {
+  if (pool) {
+    try {
+      const { rows } = await pool.query(`SELECT code, description, min_order_value, discount_value, discount_type FROM kirana_coupons WHERE is_active = TRUE`);
+      return res.json({ coupons: rows });
+    } catch (e) {}
+  }
+  res.json({ coupons: inMemoryCoupons });
+});
+
+// ============================================================================
+// CUSTOMER MULTIPLE ADDRESSES API
+// ============================================================================
+app.get('/api/customer/addresses', async (req, res) => {
+  const { phone } = req.query;
+  if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+  const cleanPhone = phone.trim().replace(/\D/g, '');
+
+  if (pool) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, title, street_address, city, pincode, is_default
+         FROM kirana_addresses WHERE customer_phone = $1
+         ORDER BY is_default DESC, id DESC`,
+        [cleanPhone]
+      );
+      return res.json({ addresses: rows });
+    } catch (e) {}
+  }
+  const addrs = inMemoryAddresses.filter(a => a.customer_phone === cleanPhone);
+  res.json({ addresses: addrs });
+});
+
+app.post('/api/customer/addresses', async (req, res) => {
+  const { phone, title, street_address, city, pincode, is_default } = req.body;
+  if (!phone || !street_address) return res.status(400).json({ error: 'Phone and street address are required' });
+  const cleanPhone = phone.trim().replace(/\D/g, '');
+
+  if (pool) {
+    try {
+      if (is_default) {
+        await pool.query(`UPDATE kirana_addresses SET is_default = FALSE WHERE customer_phone = $1`, [cleanPhone]);
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO kirana_addresses (customer_phone, title, street_address, city, pincode, is_default)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [cleanPhone, (title || 'Home').trim(), street_address.trim(), city || 'Pune', pincode || '', !!is_default]
+      );
+      return res.json({ status: 'ok', address: rows[0] });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  const newA = { id: Date.now(), customer_phone: cleanPhone, title: title || 'Home', street_address, city: city || 'Pune', pincode: pincode || '', is_default: !!is_default };
+  inMemoryAddresses.unshift(newA);
+  res.json({ status: 'ok', address: newA });
+});
+
+app.delete('/api/customer/addresses/:id', async (req, res) => {
+  const addrId = req.params.id;
+  if (pool) {
+    try {
+      await pool.query(`DELETE FROM kirana_addresses WHERE id = $1`, [addrId]);
+      return res.json({ status: 'ok' });
+    } catch (e) {}
+  }
+  inMemoryAddresses = inMemoryAddresses.filter(a => String(a.id) !== String(addrId));
+  res.json({ status: 'ok' });
+});
+
+// ============================================================================
+// CUSTOMER ORDER CANCELLATION API (Self Cancel with Stock Restoration)
+// ============================================================================
+app.patch('/api/orders/:id/cancel', async (req, res) => {
+  const orderId = req.params.id;
+
+  if (pool) {
+    try {
+      const { rows } = await pool.query(`SELECT status, items_payload FROM kirana_orders WHERE order_id = $1`, [orderId]);
+      if (rows.length === 0) return res.status(404).json({ error: 'Order not found' });
+      if (rows[0].status !== 'NEW') {
+        return res.status(400).json({ error: 'Order cannot be cancelled once packing or dispatch has started.' });
+      }
+
+      await pool.query(`UPDATE kirana_orders SET status = 'CANCELLED' WHERE order_id = $1`, [orderId]);
+
+      // Restore inventory in Neon kirana_catalog
+      const items = Array.isArray(rows[0].items_payload) ? rows[0].items_payload : [];
+      for (const it of items) {
+        await pool.query(
+          `UPDATE kirana_catalog
+           SET payload = jsonb_set(
+             payload,
+             '{stock}',
+             to_jsonb(COALESCE((payload->>'stock')::int, 0) + $1::int)
+           )
+           WHERE sku_code = $2`,
+          [it.qty || 1, it.sku]
+        );
+      }
+      console.log(`↩️ Order #${orderId} cancelled by customer and stock restored.`);
+      return res.json({ status: 'ok', message: 'Order successfully cancelled and items returned to stock.' });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  const ord = inMemoryOrders.find(o => o.order_id === orderId);
+  if (ord) {
+    if (ord.status !== 'NEW') return res.status(400).json({ error: 'Order cannot be cancelled once packing has started.' });
+    ord.status = 'CANCELLED';
+    for (const it of (ord.items || [])) {
+      const target = fallbackCatalog.find(i => i.sku === it.sku);
+      if (target) target.stock = (target.stock || 0) + (it.qty || 1);
+    }
+    return res.json({ status: 'ok' });
+  }
+  res.status(404).json({ error: 'Order not found' });
+});
+
+// ============================================================================
+// ADMIN LOW STOCK ALERTS & EXCEL CSV EXPORT API
+// ============================================================================
+app.get('/api/admin/low-stock', async (req, res) => {
+  if (pool) {
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          sku_code,
+          payload->>'name' AS name,
+          payload->>'brand' AS brand,
+          payload->>'unit' AS unit,
+          COALESCE((payload->>'price')::int, 0) AS price,
+          COALESCE((payload->>'stock')::int, 0) AS stock
+        FROM kirana_catalog
+        WHERE COALESCE((payload->>'stock')::int, 0) <= 10
+        ORDER BY stock ASC
+        LIMIT 50
+      `);
+      return res.json({ count: rows.length, low_stock_items: rows });
+    } catch (e) {}
+  }
+  const low = fallbackCatalog.filter(i => (i.stock || 50) <= 10).slice(0, 50);
+  res.json({ count: low.length, low_stock_items: low });
+});
+
+app.get('/api/admin/orders/export', async (req, res) => {
+  const { date = 'all' } = req.query;
+  let orders = [];
+
+  if (pool) {
+    try {
+      let sql = `
+        SELECT
+          order_id,
+          customer_name,
+          customer_phone,
+          customer_address,
+          order_mode,
+          payment_method,
+          status,
+          total_mrp,
+          total_amount,
+          total_savings,
+          items_payload,
+          to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') AS order_timestamp
+        FROM kirana_orders
+      `;
+      if (date === 'today') sql += ` WHERE created_at::date = CURRENT_DATE`;
+      else if (date === 'yesterday') sql += ` WHERE created_at::date = CURRENT_DATE - INTERVAL '1 day'`;
+      sql += ` ORDER BY created_at DESC`;
+
+      const { rows } = await pool.query(sql);
+      orders = rows;
+    } catch (e) {
+      console.error("CSV Export query error:", e.message);
+    }
+  } else {
+    orders = inMemoryOrders;
+  }
+
+  let csv = 'Order ID,Date Time,Customer Name,Phone,Delivery Address,Mode,Payment,Status,Total MRP,Bill Amount,Savings,Items Summary\n';
+  for (const o of orders) {
+    const items = Array.isArray(o.items_payload) ? o.items_payload : (o.items || []);
+    const itemsSummary = items.map(it => `${it.qty}x ${it.name}`).join(' | ').replace(/"/g, '""');
+    csv += `"${o.order_id}","${o.order_timestamp || ''}","${(o.customer_name||'').replace(/"/g, '""')}","${o.customer_phone || ''}","${(o.customer_address||'').replace(/"/g, '""')}","${o.order_mode}","${o.payment_method}","${o.status}",${o.total_mrp},${o.total_amount},${o.total_savings},"${itemsSummary}"\n`;
+  }
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename=kirana_orders_${date}_${Date.now()}.csv`);
+  res.send(csv);
 });
 
 app.listen(PORT, () => {

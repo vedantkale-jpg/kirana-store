@@ -140,6 +140,9 @@ async function ensureDbSchema() {
       }
     }
 
+    // Clean up old test order #ORD-8094
+    await pool.query(`DELETE FROM kirana_orders WHERE order_id = 'ORD-8094' OR customer_phone = '8888888888'`);
+
     console.log("✅ Neon DB all tables verified (Orders, Customers, Categories, Security Audit).");
   } catch (err) {
     console.error("Neon DB schema check warning:", err.message);
@@ -203,7 +206,7 @@ app.post('/api/auth/signup', async (req, res) => {
     try {
       const existing = await pool.query(`SELECT id, phone FROM kirana_customers WHERE phone = $1`, [cleanPhone]);
       if (existing.rows.length > 0) {
-        return res.status(409).json({ error: 'Ye mobile number pehle se registered hai! Kripya "Customer Login" karein.' });
+        return res.status(409).json({ error: 'This mobile number is already registered! Please sign in using Customer Login.' });
       }
 
       const insertRes = await pool.query(
@@ -225,7 +228,7 @@ app.post('/api/auth/signup', async (req, res) => {
   // Fallback in-memory
   const found = inMemoryCustomers.find(c => c.phone === cleanPhone);
   if (found) {
-    return res.status(409).json({ error: 'Ye mobile number pehle se registered hai! Kripya Customer Login karein.' });
+    return res.status(409).json({ error: 'This mobile number is already registered! Please sign in using Customer Login.' });
   }
   const newCust = { name: name.trim(), phone: cleanPhone, password, address: (address || '').trim() };
   inMemoryCustomers.push(newCust);
@@ -250,13 +253,13 @@ app.post('/api/auth/login', async (req, res) => {
 
       if (rows.length === 0) {
         return res.status(404).json({
-          error: 'Is mobile number par koi account nahi mila! Pehle "New Sign Up" par click karke account banayein.'
+          error: 'No account found for this mobile number. Please register an account first via New Sign Up.'
         });
       }
 
       const user = rows[0];
       if (user.password !== password) {
-        return res.status(401).json({ error: 'Galat password! Dobara koshish karein.' });
+        return res.status(401).json({ error: 'Incorrect password! Please try again.' });
       }
 
       console.log(`🔓 Customer Logged In: ${user.name} (+91 ${user.phone})`);
@@ -274,11 +277,11 @@ app.post('/api/auth/login', async (req, res) => {
   const user = inMemoryCustomers.find(c => c.phone === cleanPhone);
   if (!user) {
     return res.status(404).json({
-      error: 'Is mobile number par koi account nahi mila! Pehle "New Sign Up" par click karke account banayein.'
+      error: 'No account found for this mobile number. Please register an account first via New Sign Up.'
     });
   }
   if (user.password !== password) {
-    return res.status(401).json({ error: 'Galat password! Dobara koshish karein.' });
+    return res.status(401).json({ error: 'Incorrect password! Please try again.' });
   }
   res.json({ status: 'ok', customer: { name: user.name, phone: user.phone, address: user.address } });
 });
@@ -783,6 +786,27 @@ app.post('/api/admin/security-alert', async (req, res) => {
     status: 'alert_logged',
     message: 'Security breach logged. Developer Team has been notified immediately via audit queue.'
   });
+});
+
+// 6. Admin Delete Order (Permanently delete order from Neon DB)
+app.delete('/api/admin/orders/:id', async (req, res) => {
+  const orderId = req.params.id;
+
+  // Remove from in-memory fallback
+  inMemoryOrders = inMemoryOrders.filter(o => o.order_id !== orderId);
+
+  // Remove from Neon DB
+  if (pool) {
+    try {
+      await pool.query(`DELETE FROM kirana_orders WHERE order_id = $1`, [orderId]);
+      console.log(`🗑️ Order #${orderId} permanently deleted from Neon DB.`);
+    } catch (err) {
+      console.error("Neon DB Order Delete Error:", err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  res.json({ status: 'ok', deleted_order_id: orderId });
 });
 
 app.listen(PORT, () => {

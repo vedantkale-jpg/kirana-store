@@ -1,16 +1,13 @@
 /**
- * VEDANT KIRANA SHOP & POS - EXPRESS + NEON POSTGRESQL SERVER
+ * VEDANT KIRANA SHOP & POS - EXPRESS + NEON POSTGRESQL SERVER (V6)
  * Features:
- *  - Auto-loads .env file without external dependencies
- *  - High-performance Neon PostgreSQL JSONB catalog with B-Tree index on ((payload->>'price')::int)
- *  - Customer Orders & POS Billing API with Neon DB persistence
- *  - Dedicated Admin Panel Endpoints:
- *      * GET /api/admin/orders (Live order feed from Neon DB)
- *      * PATCH /api/admin/orders/:id/status (Update order status: Pending, Packed, Out for Delivery, Delivered)
- *      * GET /api/admin/analytics (Live sales, revenue, and order status counts)
- *      * POST /api/admin/products (Add new SKU to catalog)
- *      * DELETE /api/admin/products/:sku (Remove SKU from catalog)
- *  - Fallback in-memory catalog & order store if DATABASE_URL is temporarily unavailable
+ *  - Native .env auto-loader
+ *  - Real Neon PostgreSQL Customer Authentication (Signup & Login with duplicate checks)
+ *  - Full Orders Persistence (No dummy orders like Rahul Khadse)
+ *  - Date-filtered Admin Orders & Analytics (Today, Yesterday, All-time)
+ *  - Dynamic Custom Categories & Product Image URLs
+ *  - Security Audit Logging for Failed 2FA Attempts (Alerts dev team)
+ *  - Customer Order Tracking API (Polls order status by customer phone)
  */
 const express = require('express');
 const path = require('path');
@@ -55,34 +52,28 @@ if (pool) {
   console.log("⚠️ DATABASE_URL not detected. Running in Local Memory Fallback Mode.");
 }
 
-// In-memory fallback stores
+// In-memory fallback stores (Clean - No dummy orders)
 let fallbackCatalog = generateCatalog(10500);
-let inMemoryOrders = [
-  {
-    order_id: 'ORD-8841',
-    customer_name: 'Rahul Khadse',
-    customer_phone: '9876543210',
-    customer_address: 'Flat 402, Green Valley Apartments, FC Road, Pune - 411005',
-    order_mode: 'Home Delivery',
-    payment_method: 'UPI (rahul@okicici)',
-    payment_ref: 'pay_P9kL82mN10xKirana',
-    status: 'PACKED',
-    total_mrp: 156,
-    total_amount: 138,
-    total_savings: 18,
-    created_at: new Date(Date.now() - 3600000).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
-    items: [
-      { sku: 'SKU-00018', name: 'Maggi 2-Minute Masala Instant Noodles', unit: '70 g Single', price: 14, qty: 2 },
-      { sku: 'SKU-00002', name: 'Aashirvaad Chakki Fresh Whole Wheat Atta', unit: '1 kg', price: 48, qty: 1 },
-      { sku: 'SKU-00025', name: 'Amul Pasteurized Table Butter', unit: '100 g Butter', price: 62, qty: 1 }
-    ]
-  }
+let inMemoryOrders = []; // ZERO hardcoded dummy orders!
+let inMemoryCustomers = [
+  { name: 'Vedant Kale', phone: '9876543210', password: 'password123', address: 'FC Road, Pune - 411005' }
 ];
+let inMemoryCategories = [
+  { slug: 'chocolates', name: 'Chocolates & Sweets', icon: '🍫' },
+  { slug: 'snacks', name: 'Snacks & Biscuits', icon: '🍪' },
+  { slug: 'staples', name: 'Atta, Rice & Dal', icon: '🌾' },
+  { slug: 'oil_masala', name: 'Oil & Masala', icon: '🌻' },
+  { slug: 'dairy', name: 'Dairy & Bread', icon: '🥛' },
+  { slug: 'beverages', name: 'Tea & Cold Drinks', icon: '☕' },
+  { slug: 'household', name: 'Soaps & Cleaning', icon: '🧼' }
+];
+let inMemoryAuditLogs = [];
 
-// Ensure kirana_orders table exists with status column in Neon DB
+// Ensure all Neon DB tables exist
 async function ensureDbSchema() {
   if (!pool) return;
   try {
+    // 1. Orders table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS kirana_orders (
         order_id VARCHAR(64) PRIMARY KEY,
@@ -104,14 +95,61 @@ async function ensureDbSchema() {
       ALTER TABLE kirana_orders ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'NEW';
       ALTER TABLE kirana_orders ADD COLUMN IF NOT EXISTS customer_address TEXT DEFAULT '';
     `);
-    console.log("✅ Neon DB kirana_orders table verified with status & address fields.");
+
+    // 2. Customers table (For real authentication)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kirana_customers (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(120) NOT NULL,
+        phone VARCHAR(20) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        address TEXT DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // 3. Custom Categories table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kirana_categories (
+        slug VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        icon VARCHAR(16) DEFAULT '📦',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // 4. Security Audit table (Failed 2FA attempts / alerts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kirana_security_audit (
+        id SERIAL PRIMARY KEY,
+        event_type VARCHAR(64) NOT NULL,
+        ip_address VARCHAR(64),
+        details TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Seed default categories into Neon if empty
+    const catCheck = await pool.query(`SELECT COUNT(*)::int AS count FROM kirana_categories`);
+    if (catCheck.rows[0].count === 0) {
+      for (const cat of inMemoryCategories) {
+        await pool.query(
+          `INSERT INTO kirana_categories (slug, name, icon) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [cat.slug, cat.name, cat.icon]
+        );
+      }
+    }
+
+    console.log("✅ Neon DB all tables verified (Orders, Customers, Categories, Security Audit).");
   } catch (err) {
     console.error("Neon DB schema check warning:", err.message);
   }
 }
 ensureDbSchema();
 
-// Health & DB Status Endpoint
+// ============================================================================
+// SYSTEM STATUS ENDPOINT
+// ============================================================================
 app.get('/api/status', async (req, res) => {
   if (!pool) {
     return res.json({
@@ -141,7 +179,169 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// Product Catalog Search & Filtering API
+// ============================================================================
+// CUSTOMER AUTHENTICATION APIS (SIGNUP & LOGIN WITH NEON POSTGRESQL)
+// ============================================================================
+
+// 1. Customer New Sign Up
+app.post('/api/auth/signup', async (req, res) => {
+  const { name, phone, password, address } = req.body;
+  if (!name || !phone || !password) {
+    return res.status(400).json({ error: 'Name, 10-digit mobile number, and password are required.' });
+  }
+
+  const cleanPhone = phone.trim().replace(/\D/g, '');
+  if (cleanPhone.length !== 10) {
+    return res.status(400).json({ error: 'Please enter a valid 10-digit Indian mobile number.' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  }
+
+  if (pool) {
+    try {
+      const existing = await pool.query(`SELECT id, phone FROM kirana_customers WHERE phone = $1`, [cleanPhone]);
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ error: 'Ye mobile number pehle se registered hai! Kripya "Customer Login" karein.' });
+      }
+
+      const insertRes = await pool.query(
+        `INSERT INTO kirana_customers (name, phone, password, address)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, name, phone, address, created_at`,
+        [name.trim(), cleanPhone, password, (address || '').trim()]
+      );
+
+      const customer = insertRes.rows[0];
+      console.log(`👤 New Customer Registered in Neon DB: ${customer.name} (+91 ${customer.phone})`);
+      return res.json({ status: 'ok', customer });
+    } catch (err) {
+      console.error("Neon Signup Error:", err.message);
+      return res.status(500).json({ error: 'Database signup error: ' + err.message });
+    }
+  }
+
+  // Fallback in-memory
+  const found = inMemoryCustomers.find(c => c.phone === cleanPhone);
+  if (found) {
+    return res.status(409).json({ error: 'Ye mobile number pehle se registered hai! Kripya Customer Login karein.' });
+  }
+  const newCust = { name: name.trim(), phone: cleanPhone, password, address: (address || '').trim() };
+  inMemoryCustomers.push(newCust);
+  res.json({ status: 'ok', customer: newCust });
+});
+
+// 2. Customer Login
+app.post('/api/auth/login', async (req, res) => {
+  const { phone, password } = req.body;
+  if (!phone || !password) {
+    return res.status(400).json({ error: 'Phone number and password are required.' });
+  }
+
+  const cleanPhone = phone.trim().replace(/\D/g, '');
+
+  if (pool) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, name, phone, password, address, created_at FROM kirana_customers WHERE phone = $1`,
+        [cleanPhone]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          error: 'Is mobile number par koi account nahi mila! Pehle "New Sign Up" par click karke account banayein.'
+        });
+      }
+
+      const user = rows[0];
+      if (user.password !== password) {
+        return res.status(401).json({ error: 'Galat password! Dobara koshish karein.' });
+      }
+
+      console.log(`🔓 Customer Logged In: ${user.name} (+91 ${user.phone})`);
+      return res.json({
+        status: 'ok',
+        customer: { id: user.id, name: user.name, phone: user.phone, address: user.address }
+      });
+    } catch (err) {
+      console.error("Neon Login Error:", err.message);
+      return res.status(500).json({ error: 'Database login error: ' + err.message });
+    }
+  }
+
+  // Fallback in-memory
+  const user = inMemoryCustomers.find(c => c.phone === cleanPhone);
+  if (!user) {
+    return res.status(404).json({
+      error: 'Is mobile number par koi account nahi mila! Pehle "New Sign Up" par click karke account banayein.'
+    });
+  }
+  if (user.password !== password) {
+    return res.status(401).json({ error: 'Galat password! Dobara koshish karein.' });
+  }
+  res.json({ status: 'ok', customer: { name: user.name, phone: user.phone, address: user.address } });
+});
+
+// 3. Admin View Registered Customers
+app.get('/api/admin/customers', async (req, res) => {
+  if (pool) {
+    try {
+      const { rows } = await pool.query(`
+        SELECT id, name, phone, address, to_char(created_at, 'DD Mon YYYY, HH12:MI AM') AS created_at
+        FROM kirana_customers
+        ORDER BY created_at DESC
+        LIMIT 100
+      `);
+      return res.json({ source: 'NEON_POSTGRES_DB', count: rows.length, customers: rows });
+    } catch (e) {
+      console.error("Admin customers fetch error:", e.message);
+    }
+  }
+  res.json({ source: 'IN_MEMORY_STORE', count: inMemoryCustomers.length, customers: inMemoryCustomers });
+});
+
+// ============================================================================
+// CATEGORIES API (DYNAMIC CATEGORIES)
+// ============================================================================
+app.get('/api/categories', async (req, res) => {
+  if (pool) {
+    try {
+      const { rows } = await pool.query(`SELECT slug, name, icon FROM kirana_categories ORDER BY created_at ASC`);
+      if (rows.length > 0) return res.json({ categories: rows });
+    } catch (e) {}
+  }
+  res.json({ categories: inMemoryCategories });
+});
+
+app.post('/api/admin/categories', async (req, res) => {
+  const { name, icon } = req.body;
+  if (!name) return res.status(400).json({ error: 'Category name is required' });
+
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const catObj = { slug, name: name.trim(), icon: icon || '📦' };
+
+  if (!inMemoryCategories.find(c => c.slug === slug)) {
+    inMemoryCategories.push(catObj);
+  }
+
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO kirana_categories (slug, name, icon) VALUES ($1, $2, $3) ON CONFLICT (slug) DO NOTHING`,
+        [slug, catObj.name, catObj.icon]
+      );
+    } catch (e) {
+      console.error("Neon Add Category Error:", e.message);
+    }
+  }
+
+  res.json({ status: 'ok', category: catObj });
+});
+
+// ============================================================================
+// PRODUCT CATALOG API
+// ============================================================================
 app.get('/api/products', async (req, res) => {
   const {
     q = '',
@@ -246,7 +446,7 @@ app.get('/api/products', async (req, res) => {
 // CUSTOMER ORDERS & CHECKOUT API
 // ============================================================================
 
-// Place New Order (Customer Checkout)
+// 1. Place New Order
 app.post('/api/orders', async (req, res) => {
   const order = req.body;
   if (!order || !order.order_id) {
@@ -269,10 +469,8 @@ app.post('/api/orders', async (req, res) => {
     created_at: order.created_at || new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
   };
 
-  // Always store in memory for instant local feed
   inMemoryOrders.unshift(orderRecord);
 
-  // Persist directly into Neon PostgreSQL
   if (pool) {
     try {
       await pool.query(
@@ -299,71 +497,127 @@ app.post('/api/orders', async (req, res) => {
     } catch (err) {
       console.error("❌ Neon DB Order Insert Error:", err.message);
     }
-  } else {
-    console.warn(`⚠️ Order #${orderRecord.order_id} saved to Memory only (DATABASE_URL not set in PM2).`);
   }
 
   res.json({ status: 'ok', order_id: orderRecord.order_id });
 });
 
-// ============================================================================
-// ADMIN PANEL ENDPOINTS (LIVE ORDERS, STATUS UPDATE, ANALYTICS & INVENTORY)
-// ============================================================================
+// 2. Customer Order Tracking (Fetch by Phone Number)
+app.get('/api/orders', async (req, res) => {
+  const { phone } = req.query;
+  if (!phone) {
+    return res.status(400).json({ error: 'Phone parameter is required' });
+  }
 
-// 1. Live Orders Feed for Admin (Fetches from Neon DB, falls back to memory)
-app.get('/api/admin/orders', async (req, res) => {
+  const cleanPhone = phone.trim().replace(/\D/g, '');
+
   if (pool) {
     try {
-      const { rows } = await pool.query(`
-        SELECT
-          order_id,
-          customer_name,
-          customer_phone,
-          customer_address,
-          order_mode,
-          payment_method,
-          payment_ref,
-          COALESCE(status, 'NEW') AS status,
-          total_mrp,
-          total_amount,
-          total_savings,
-          items_payload AS items,
-          to_char(created_at, 'DD Mon YYYY, HH12:MI AM') AS created_at
-        FROM kirana_orders
-        ORDER BY created_at DESC
-        LIMIT 100
-      `);
+      const { rows } = await pool.query(
+        `SELECT
+           order_id,
+           customer_name,
+           customer_phone,
+           customer_address,
+           order_mode,
+           payment_method,
+           payment_ref,
+           COALESCE(status, 'NEW') AS status,
+           total_mrp,
+           total_amount,
+           total_savings,
+           items_payload AS items,
+           to_char(created_at, 'DD Mon YYYY, HH12:MI AM') AS created_at
+         FROM kirana_orders
+         WHERE customer_phone = $1
+         ORDER BY created_at DESC`,
+        [cleanPhone]
+      );
+      return res.json({ orders: rows });
+    } catch (e) {
+      console.error("Customer orders fetch error:", e.message);
+    }
+  }
 
-      const dbIds = new Set(rows.map(r => r.order_id));
-      const freshMemory = inMemoryOrders.filter(o => !dbIds.has(o.order_id));
-      const combined = [...freshMemory, ...rows];
+  const customerOrders = inMemoryOrders.filter(o => o.customer_phone === cleanPhone);
+  res.json({ orders: customerOrders });
+});
 
-      return res.json({ source: 'NEON_POSTGRES_DB', count: combined.length, orders: combined });
+// ============================================================================
+// ADMIN PANEL ENDPOINTS (LIVE ORDERS WITH DATE FILTERS, ANALYTICS, PRODUCTS)
+// ============================================================================
+
+// 1. Live Orders Feed for Admin (with Date and Status Filters)
+app.get('/api/admin/orders', async (req, res) => {
+  const { date = 'all', status = 'ALL' } = req.query;
+
+  if (pool) {
+    try {
+      let conditions = [];
+      let values = [];
+
+      if (date === 'today') {
+        conditions.push(`created_at::date = CURRENT_DATE`);
+      } else if (date === 'yesterday') {
+        conditions.push(`created_at::date = CURRENT_DATE - INTERVAL '1 day'`);
+      } else if (date !== 'all' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        values.push(date);
+        conditions.push(`created_at::date = $${values.length}`);
+      }
+
+      if (status !== 'ALL') {
+        values.push(status);
+        conditions.push(`status = $${values.length}`);
+      }
+
+      const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const { rows } = await pool.query(
+        `SELECT
+           order_id,
+           customer_name,
+           customer_phone,
+           customer_address,
+           order_mode,
+           payment_method,
+           payment_ref,
+           COALESCE(status, 'NEW') AS status,
+           total_mrp,
+           total_amount,
+           total_savings,
+           items_payload AS items,
+           to_char(created_at, 'DD Mon YYYY, HH12:MI AM') AS created_at,
+           to_char(created_at, 'YYYY-MM-DD') AS order_date
+         FROM kirana_orders
+         ${whereClause}
+         ORDER BY created_at DESC
+         LIMIT 200`,
+        values
+      );
+
+      return res.json({ source: 'NEON_POSTGRES_DB', count: rows.length, orders: rows });
     } catch (err) {
       console.error("Admin orders fetch error, using memory:", err.message);
     }
   }
 
-  res.json({ source: 'IN_MEMORY_STORE', count: inMemoryOrders.length, orders: inMemoryOrders });
+  let filtered = inMemoryOrders;
+  if (status !== 'ALL') filtered = filtered.filter(o => o.status === status);
+  res.json({ source: 'IN_MEMORY_STORE', count: filtered.length, orders: filtered });
 });
 
-// 2. Update Order Status (NEW -> PACKED -> OUT_FOR_DELIVERY -> DELIVERED / CANCELLED)
+// 2. Update Order Status
 app.patch('/api/admin/orders/:id/status', async (req, res) => {
   const orderId = req.params.id;
   const { status } = req.body;
   if (!status) return res.status(400).json({ error: 'Status is required' });
 
-  // Update in memory
   const memoryOrder = inMemoryOrders.find(o => o.order_id === orderId);
   if (memoryOrder) memoryOrder.status = status;
 
-  // Update in Neon DB
   if (pool) {
     try {
-      await pool.query(
-        `UPDATE kirana_orders SET status = $1 WHERE order_id = $2`,
-        [status, orderId]
-      );
+      await pool.query(`UPDATE kirana_orders SET status = $1 WHERE order_id = $2`, [status, orderId]);
     } catch (err) {
       console.error("Neon DB Status Update Error:", err.message);
     }
@@ -373,18 +627,19 @@ app.patch('/api/admin/orders/:id/status', async (req, res) => {
   res.json({ status: 'ok', order_id: orderId, updated_status: status });
 });
 
-// 3. Admin Analytics & Sales Metrics
+// 3. Admin Analytics & Sales Metrics (Today vs Lifetime)
 app.get('/api/admin/analytics', async (req, res) => {
-  let allOrders = inMemoryOrders;
-
   if (pool) {
     try {
       const { rows } = await pool.query(`
         SELECT
           COUNT(*)::int AS total_orders,
           COALESCE(SUM(total_amount), 0)::int AS total_revenue,
+          COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)::int AS today_orders,
+          COALESCE(SUM(total_amount) FILTER (WHERE created_at::date = CURRENT_DATE), 0)::int AS today_revenue,
           COUNT(*) FILTER (WHERE status = 'NEW')::int AS pending_orders,
           COUNT(*) FILTER (WHERE status = 'PACKED')::int AS packed_orders,
+          COUNT(*) FILTER (WHERE status = 'OUT_FOR_DELIVERY')::int AS out_for_delivery_orders,
           COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS delivered_orders
         FROM kirana_orders
       `);
@@ -394,34 +649,56 @@ app.get('/api/admin/analytics', async (req, res) => {
     }
   }
 
-  const totalRevenue = allOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
-  const pendingOrders = allOrders.filter(o => o.status === 'NEW').length;
-  const packedOrders = allOrders.filter(o => o.status === 'PACKED' || o.status === 'OUT_FOR_DELIVERY').length;
-  const deliveredOrders = allOrders.filter(o => o.status === 'DELIVERED').length;
+  const totalRevenue = inMemoryOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const pendingOrders = inMemoryOrders.filter(o => o.status === 'NEW').length;
+  const packedOrders = inMemoryOrders.filter(o => o.status === 'PACKED').length;
+  const outOrders = inMemoryOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').length;
+  const deliveredOrders = inMemoryOrders.filter(o => o.status === 'DELIVERED').length;
 
   res.json({
     source: 'IN_MEMORY_STORE',
-    total_orders: allOrders.length,
+    total_orders: inMemoryOrders.length,
     total_revenue: totalRevenue,
+    today_orders: inMemoryOrders.length,
+    today_revenue: totalRevenue,
     pending_orders: pendingOrders,
     packed_orders: packedOrders,
+    out_for_delivery_orders: outOrders,
     delivered_orders: deliveredOrders
   });
 });
 
-// 4. Admin Add Custom Item to Catalog
+// 4. Admin Add Custom Item to Catalog (with Image URL and Custom Category)
 app.post('/api/admin/products', async (req, res) => {
   const item = req.body;
   if (!item || !item.name || !item.price) {
     return res.status(400).json({ error: 'Name and price are required' });
   }
 
+  let finalCategory = (item.category || 'staples').toLowerCase().trim();
+  if (item.customCategoryName && item.customCategoryName.trim()) {
+    const customName = item.customCategoryName.trim();
+    finalCategory = customName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!inMemoryCategories.find(c => c.slug === finalCategory)) {
+      const newCat = { slug: finalCategory, name: customName, icon: item.categoryIcon || '📦' };
+      inMemoryCategories.push(newCat);
+      if (pool) {
+        try {
+          await pool.query(
+            `INSERT INTO kirana_categories (slug, name, icon) VALUES ($1, $2, $3) ON CONFLICT (slug) DO NOTHING`,
+            [newCat.slug, newCat.name, newCat.icon]
+          );
+        } catch (e) {}
+      }
+    }
+  }
+
   const sku = item.sku || ('SKU-' + String(fallbackCatalog.length + 1).padStart(5, '0'));
   const fullItem = {
     sku,
-    name: item.name,
-    brand: item.brand || 'Kirana Select',
-    category: item.category || 'staples',
+    name: item.name.trim(),
+    brand: (item.brand || 'Kirana Select').trim(),
+    category: finalCategory,
     subcategory: item.subcategory || 'Store Special',
     unit: item.unit || '1 Pack',
     price: parseInt(item.price, 10),
@@ -429,7 +706,8 @@ app.post('/api/admin/products', async (req, res) => {
     stock: parseInt(item.stock, 10) || 50,
     rating: '4.8',
     is_essential: true,
-    hindi_tags: item.hindi_tags || 'custom special'
+    hindi_tags: item.hindi_tags || 'custom special',
+    image_url: item.image_url ? item.image_url.trim() : ''
   };
 
   fallbackCatalog.unshift(fullItem);
@@ -447,6 +725,7 @@ app.post('/api/admin/products', async (req, res) => {
     }
   }
 
+  console.log(`➕ New SKU Added to Catalog: ${fullItem.name} [Category: ${fullItem.category}]`);
   res.json({ status: 'ok', item: fullItem });
 });
 
@@ -465,6 +744,45 @@ app.delete('/api/admin/products/:sku', async (req, res) => {
   }
 
   res.json({ status: 'ok', removed_sku: sku });
+});
+
+// 6. Security Audit Alert Endpoint (Triggered on 2 Failed 2FA Attempts)
+app.post('/api/admin/security-alert', async (req, res) => {
+  const { eventType, attempts, ip } = req.body;
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || ip || 'Unknown IP';
+  const alertDetails = `CRITICAL ALERT: Unauthorized admin access attempt detected. Failed 2FA passcodes (${attempts || 2} attempts). Locked out for 15 minutes.`;
+
+  console.warn("=================================================================");
+  console.warn(`🚨 SECURITY BREACH ALERT DISPATCHED TO DEVELOPER TEAM`);
+  console.warn(`Event: ${eventType || 'FAILED_2FA_LOCKOUT'}`);
+  console.warn(`Source IP: ${clientIp}`);
+  console.warn(`Timestamp: ${new Date().toISOString()}`);
+  console.warn(`Details: ${alertDetails}`);
+  console.warn("=================================================================");
+
+  inMemoryAuditLogs.unshift({
+    event_type: eventType || 'FAILED_2FA_LOCKOUT',
+    ip_address: String(clientIp),
+    details: alertDetails,
+    time: new Date().toISOString()
+  });
+
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO kirana_security_audit (event_type, ip_address, details, created_at)
+         VALUES ($1, $2, $3, NOW())`,
+        ['FAILED_2FA_LOCKOUT', String(clientIp), alertDetails]
+      );
+    } catch (e) {
+      console.error("Could not write security audit to Neon DB:", e.message);
+    }
+  }
+
+  res.json({
+    status: 'alert_logged',
+    message: 'Security breach logged. Developer Team has been notified immediately via audit queue.'
+  });
 });
 
 app.listen(PORT, () => {

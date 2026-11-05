@@ -91,6 +91,16 @@
             </button>
           </div>
 
+          <!-- API Error Alert Banners -->
+          <div id="authApiErrorBox" class="hidden mb-4 p-3 rounded-2xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-2">
+            <span class="text-base">⚠️</span>
+            <span id="authApiErrorMsg">Error message</span>
+          </div>
+          <div id="authApiSuccessBox" class="hidden mb-4 p-3 rounded-2xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-2">
+            <span class="text-base">🎉</span>
+            <span id="authApiSuccessMsg">Success message</span>
+          </div>
+
           <!-- Customer Login Form -->
           <form id="formCustomerLogin" class="space-y-3.5 text-xs">
             <div>
@@ -469,14 +479,14 @@
     <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-5">
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div class="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4">
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Sales Revenue</div>
-          <div id="statTotalRevenue" class="text-xl sm:text-2xl font-extrabold text-emerald-400 mt-1">₹0</div>
-          <div class="text-[11px] text-slate-400 mt-0.5">From customer checkout bills</div>
+          <div class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Today's Revenue</div>
+          <div id="statTodayRevenue" class="text-xl sm:text-2xl font-extrabold text-amber-300 mt-1">₹0</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Today: <span id="statTodayOrdersCount" class="font-bold text-white">0</span> orders placed</div>
         </div>
         <div class="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4">
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Orders Placed</div>
-          <div id="statTotalOrders" class="text-xl sm:text-2xl font-extrabold text-white mt-1">0</div>
-          <div class="text-[11px] text-slate-400 mt-0.5">Lifetime orders count</div>
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Sales Revenue</div>
+          <div id="statTotalRevenue" class="text-xl sm:text-2xl font-extrabold text-emerald-400 mt-1">₹0</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Lifetime: <span id="statTotalOrders" class="font-bold text-white">0</span> orders</div>
         </div>
         <div class="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-4">
           <div class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Pending Orders</div>
@@ -515,15 +525,35 @@
             </h3>
             <p class="text-xs text-slate-400 mt-0.5">Jab bhi customer app se koi item order karega, wo bina refresh kiye turant yahan aayega.</p>
           </div>
-          <div class="flex items-center gap-2 text-xs">
-            <span class="text-slate-400">Filter Status:</span>
-            <select id="adminOrderStatusFilter" class="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-200 outline-none text-xs">
-              <option value="ALL">All Orders</option>
-              <option value="NEW">Pending (NEW)</option>
-              <option value="PACKED">Packed</option>
-              <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
-              <option value="DELIVERED">Delivered</option>
-            </select>
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <!-- Date Filter (Today, Yesterday, All) -->
+            <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1">
+              <span class="text-slate-400">📅 Date:</span>
+              <select id="adminOrderDateFilter" class="bg-transparent text-amber-300 font-bold outline-none text-xs cursor-pointer">
+                <option value="all">All Dates History</option>
+                <option value="today" selected>Today (05 Nov 2026)</option>
+                <option value="yesterday">Yesterday</option>
+              </select>
+            </div>
+
+            <!-- Status Filter -->
+            <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1">
+              <span class="text-slate-400">Status:</span>
+              <select id="adminOrderStatusFilter" class="bg-transparent text-slate-200 font-semibold outline-none text-xs cursor-pointer">
+                <option value="ALL">All Orders</option>
+                <option value="NEW">Pending (NEW)</option>
+                <option value="PACKED">Packed</option>
+                <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
+                <option value="DELIVERED">Delivered</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+            </div>
+
+            <!-- Auto-Delivery Simulation Toggle -->
+            <label class="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 px-3 py-1 rounded-xl cursor-pointer font-bold select-none" title="Har 20-30 second mein pending orders automatically Pack aur Deliver hote dikhenge demo ke liye">
+              <input type="checkbox" id="toggleAutoDelivery" class="accent-amber-400 w-3.5 h-3.5 rounded" />
+              <span>⚡ Live Delivery Simulator</span>
+            </label>
           </div>
         </div>
 
@@ -586,7 +616,10 @@
         <div>
           <label class="block font-semibold text-slate-300 mb-1">Owner Password</label>
           <input id="admin2FaPassword" type="password" required placeholder="Enter Admin Password" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-white font-medium outline-none focus:border-amber-400" />
-          <p class="text-[10px] text-slate-400 mt-1">Default Password: <code class="text-amber-400 font-bold">Vedant@2026</code> (or <code class="text-amber-400 font-bold">1234</code>)</p>
+          <div class="flex items-center justify-between mt-1.5">
+            <span class="text-[10px] text-slate-400">Strict Authorized Owner Access</span>
+            <button id="btnForgotAdminPassword" type="button" class="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline">Forgot Password?</button>
+          </div>
         </div>
         <div class="pt-2 flex justify-end gap-2">
           <button id="btnCancel2Fa" type="button" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold">Cancel</button>
@@ -596,20 +629,20 @@
 
       <!-- STEP 2: 2FA SECURITY CODE / OTP VERIFICATION -->
       <form id="form2FaStep2" class="hidden p-5 space-y-3.5 text-xs">
-        <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-3 text-emerald-300">
+        <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-amber-300">
           <div class="font-bold">Step 2: Enter 2FA Security Passcode</div>
           <p class="text-[11px] text-slate-300 mt-0.5">
-            Security Passcode: <span class="bg-slate-800 text-amber-300 px-2 py-0.5 rounded font-mono font-bold">2026</span>
+            Apna confidential 4-digit security PIN dalein. <span class="text-rose-400 font-bold">(Sirf 2 Chances Valid)</span>
           </p>
         </div>
         <div>
-          <label class="block font-semibold text-slate-300 mb-1">6-Digit / 4-Digit Security PIN</label>
+          <label class="block font-semibold text-slate-300 mb-1">Security PIN / Passcode</label>
           <input
             id="admin2FaOtp"
-            type="text"
+            type="password"
             maxlength="6"
             required
-            placeholder="Enter Passcode (2026)"
+            placeholder="••••"
             class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-center text-lg font-mono tracking-widest text-white outline-none focus:border-amber-400"
           />
         </div>
@@ -626,6 +659,33 @@
   <!-- ====================================================================== -->
   <!-- 5. SLIDE-OVER PROFILE DRAWER (NAME, ADDRESS, ORDERS & SUPPORT)        -->
   <!-- ====================================================================== -->
+  <!-- DEVELOPER SUPPORT FORGOT PASSWORD MODAL -->
+  <div id="forgotPasswordModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 text-slate-100 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl border border-slate-700 p-5 space-y-4 text-xs">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🔐</span>
+          <h4 class="font-extrabold text-sm text-white">Forgot Admin Password?</h4>
+        </div>
+        <button id="btnCloseForgotPassModal" type="button" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center">✕</button>
+      </div>
+      <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-amber-300 space-y-1">
+        <div class="font-bold text-sm">Contact the Developer Team</div>
+        <p class="text-[11px] text-slate-300 leading-relaxed">
+          Security Policy ke tehat Admin credentials ko user panel se reset nahi kiya ja sakta. Kripya authorized developer team se direct sampark karein:
+        </p>
+      </div>
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2 text-slate-300">
+        <div>📞 <strong>Developer Helpline / WhatsApp:</strong> <span class="text-emerald-400 font-mono font-bold">+91 98765 43210</span></div>
+        <div>📧 <strong>Official Email:</strong> <span class="text-sky-400 font-mono">support@vedantawsslab.site</span></div>
+        <div>🛡️ <strong>System Admin:</strong> Vedant Super Kirana AWS Lab</div>
+      </div>
+      <div class="pt-2 text-right">
+        <button id="btnDoneForgotPass" type="button" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold">Theek Hai (Close)</button>
+      </div>
+    </div>
+  </div>
+
   <div id="profileDrawerBackdrop" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 hidden"></div>
   <aside id="profileDrawer" class="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white z-50 shadow-2xl border-l border-slate-200 flex flex-col translate-x-full transition-transform duration-200">
     <div class="p-4 bg-gradient-to-r from-slate-900 to-emerald-950 text-white flex items-center justify-between">
@@ -898,8 +958,22 @@
               <option value="dairy">Dairy, Bread &amp; Breakfast</option>
               <option value="beverages">Tea, Coffee &amp; Cold Drinks</option>
               <option value="household">Soaps, Cleaning &amp; Household</option>
+              <option value="__NEW_CATEGORY__" class="font-bold text-emerald-700">➕ Add New Category...</option>
             </select>
           </div>
+        </div>
+
+        <!-- Dynamic New Category Input Row -->
+        <div id="newCategoryWrapper" class="hidden bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
+          <label class="block font-bold text-emerald-800 mb-1">New Category Name *</label>
+          <input id="customCategoryInput" type="text" placeholder="e.g. Organic Spices / Pooja Samagri / Fresh Bakery" class="w-full bg-white border border-emerald-300 rounded-lg px-3 py-1.5 text-slate-800 outline-none" />
+        </div>
+
+        <!-- Product Image URL Field -->
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Product Photo URL (Add Image) *</label>
+          <input id="newSkuImage" type="url" placeholder="https://images.unsplash.com/... (ya khali chhoden for auto studio photo)" class="w-full border border-slate-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500 text-xs" />
+          <p class="text-[10px] text-slate-400 mt-0.5">Online image link dalein taaki product card par photo dikhe.</p>
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div>
@@ -1091,8 +1165,10 @@
       const state = {
         isLoggedIn: false,
         isAdminLoggedIn: false,
-        adminAttemptsLeft: 3,
+        adminAttemptsLeft: 2,
         adminLockedUntil: 0,
+        adminDateFilter: 'all',
+        autoDeliveryActive: false,
         user: { name: '', phone: '', address: '', role: 'customer' },
         category: 'all',
         search: '',
@@ -1171,13 +1247,18 @@
       document.getElementById('linkGoToSignup').addEventListener('click', () => showCustomerAuthTab('signup'));
       document.getElementById('linkGoToLogin').addEventListener('click', () => showCustomerAuthTab('login'));
 
-      // Customer Login Handler with Strict Validation
-      formCustomerLogin.addEventListener('submit', (e) => {
+      // Customer Login Handler with Real Neon PostgreSQL Authentication
+      formCustomerLogin.addEventListener('submit', async (e) => {
         e.preventDefault();
         const phone = document.getElementById('loginIdentifier').value.trim();
         const pass = document.getElementById('loginPassword').value.trim();
         const phoneErr = document.getElementById('loginPhoneError');
         const passErr = document.getElementById('loginPassError');
+        const errBox = document.getElementById('authApiErrorBox');
+        const errMsg = document.getElementById('authApiErrorMsg');
+        const succBox = document.getElementById('authApiSuccessBox');
+        errBox.classList.add('hidden');
+        succBox.classList.add('hidden');
 
         let valid = true;
         if (!isValidIndianPhone(phone)) {
@@ -1196,25 +1277,32 @@
 
         if (!valid) return;
 
-        let saved = null;
         try {
-          const raw = localStorage.getItem('kirana_cust_' + phone);
-          if (raw) saved = JSON.parse(raw);
-        } catch (err) {}
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, password: pass })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            errBox.classList.remove('hidden');
+            errMsg.textContent = data.error || 'Login failed. Please check credentials.';
+            showToast('❌ ' + (data.error || 'Login failed!'));
+            return;
+          }
 
-        const userObj = saved || {
-          name: 'Customer (' + phone.slice(-4) + ')',
-          phone: phone,
-          address: '',
-          role: 'customer'
-        };
-
-        enterCustomerStorefront(userObj);
-        showToast('👋 Welcome ' + userObj.name + '!');
+          localStorage.setItem('kirana_shop_user', JSON.stringify(data.customer));
+          enterCustomerStorefront(data.customer);
+          fetchCustomerOrders(data.customer.phone);
+          showToast('👋 Welcome back, ' + data.customer.name + '!');
+        } catch (err) {
+          console.error("Login request error:", err);
+          showToast('Network error while logging in.');
+        }
       });
 
-      // Customer Sign Up Handler with Strict Validation
-      formCustomerSignup.addEventListener('submit', (e) => {
+      // Customer Sign Up Handler with Real Neon PostgreSQL Authentication
+      formCustomerSignup.addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = document.getElementById('signupName').value.trim();
         const phone = document.getElementById('signupPhone').value.trim();
@@ -1223,6 +1311,12 @@
 
         const phoneErr = document.getElementById('signupPhoneError');
         const passErr = document.getElementById('signupPassError');
+        const errBox = document.getElementById('authApiErrorBox');
+        const errMsg = document.getElementById('authApiErrorMsg');
+        const succBox = document.getElementById('authApiSuccessBox');
+        const succMsg = document.getElementById('authApiSuccessMsg');
+        errBox.classList.add('hidden');
+        succBox.classList.add('hidden');
 
         let valid = true;
         if (!isValidIndianPhone(phone)) {
@@ -1241,15 +1335,48 @@
 
         if (!valid) return;
 
-        const userObj = { name, phone, address, role: 'customer' };
         try {
-          localStorage.setItem('kirana_cust_' + phone, JSON.stringify(userObj));
-          localStorage.setItem('kirana_shop_user', JSON.stringify(userObj));
-        } catch (err) {}
+          const res = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, phone, password: pass, address })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            errBox.classList.remove('hidden');
+            errMsg.textContent = data.error || 'Sign up failed.';
+            showToast('❌ ' + (data.error || 'Sign up failed!'));
+            return;
+          }
 
-        enterCustomerStorefront(userObj);
-        showToast('🎉 Welcome ' + name + '! Account created successfully.');
+          succBox.classList.remove('hidden');
+          succMsg.textContent = 'Account successfully created in Neon Database! Logging in...';
+          localStorage.setItem('kirana_shop_user', JSON.stringify(data.customer));
+
+          setTimeout(() => {
+            enterCustomerStorefront(data.customer);
+            showToast('🎉 Welcome ' + data.customer.name + '! Account created.');
+          }, 800);
+        } catch (err) {
+          console.error("Signup request error:", err);
+          showToast('Network error while signing up.');
+        }
       });
+
+      // Fetch Customer Orders from Neon DB
+      async function fetchCustomerOrders(phone) {
+        if (!phone) return;
+        try {
+          const res = await fetch('/api/orders?phone=' + encodeURIComponent(phone));
+          if (res.ok) {
+            const data = await res.json();
+            if (data.orders) {
+              state.orders = data.orders;
+              renderOrders();
+            }
+          }
+        } catch (e) {}
+      }
 
       function enterCustomerStorefront(userObj) {
         state.isLoggedIn = true;
@@ -1319,6 +1446,20 @@
         form2FaStep1.classList.remove('hidden');
       });
 
+      // Forgot Password Modal Click Listeners
+      document.getElementById('btnForgotAdminPassword').addEventListener('click', () => {
+        document.getElementById('forgotPasswordModal').classList.remove('hidden');
+        document.getElementById('forgotPasswordModal').classList.add('flex');
+      });
+      document.getElementById('btnCloseForgotPassModal').addEventListener('click', () => {
+        document.getElementById('forgotPasswordModal').classList.add('hidden');
+        document.getElementById('forgotPasswordModal').classList.remove('flex');
+      });
+      document.getElementById('btnDoneForgotPass').addEventListener('click', () => {
+        document.getElementById('forgotPasswordModal').classList.add('hidden');
+        document.getElementById('forgotPasswordModal').classList.remove('flex');
+      });
+
       // Step 1: Admin Password Verification
       form2FaStep1.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -1327,17 +1468,18 @@
           form2FaStep1.classList.add('hidden');
           form2FaStep2.classList.remove('hidden');
           document.getElementById('admin2FaOtp').focus();
-          showToast('🔑 Password Verified! Enter 2FA Passcode (2026)');
+          showToast('🔑 Password Verified! Enter confidential 2FA PIN');
         } else {
           handleAdminFailedAttempt();
         }
       });
 
-      // Step 2: 2FA Security Passcode Verification (Passcode: 2026)
+      // Step 2: 2FA Security Passcode Verification (strictly 2 chances)
       form2FaStep2.addEventListener('submit', (e) => {
         e.preventDefault();
         const otp = document.getElementById('admin2FaOtp').value.trim();
         if (otp === '2026' || otp === '123456') {
+          state.adminAttemptsLeft = 2;
           close2FaModal();
           enterAdminDashboard();
         } else {
@@ -1348,15 +1490,26 @@
       function handleAdminFailedAttempt() {
         state.adminAttemptsLeft--;
         if (state.adminAttemptsLeft <= 0) {
-          state.adminLockedUntil = Date.now() + 60000;
+          state.adminLockedUntil = Date.now() + 15 * 60 * 1000; // 15 mins lockout
           document.getElementById('adminLockoutWarning').classList.remove('hidden');
-          showToast('🔒 3 failed attempts! Admin Console locked for 60 seconds.');
+          document.getElementById('adminLockoutWarning').innerHTML = '🚨 <strong>SECURITY LOCKOUT:</strong> 2 Baar Galat Passcode Dala Gaya! Admin Console 15 minute ke liye lock kar diya gaya hai aur Developer Team ko Security Alert bhej diya gaya hai.';
+          showToast('🚨 2 Failed attempts! Admin locked for 15 mins.');
+
+          // Dispatch Security Audit Alert to backend Neon DB
+          try {
+            fetch('/api/admin/security-alert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ eventType: 'FAILED_2FA_LOCKOUT', attempts: 2 })
+            });
+          } catch (e) {}
+
           setTimeout(() => {
-            state.adminAttemptsLeft = 3;
+            state.adminAttemptsLeft = 2;
             document.getElementById('adminLockoutWarning').classList.add('hidden');
-          }, 60000);
+          }, 15 * 60 * 1000);
         } else {
-          showToast('❌ Invalid credentials! ' + state.adminAttemptsLeft + ' attempts left.');
+          showToast('⚠️ Galat Passcode! Sirf ' + state.adminAttemptsLeft + ' aakhri chance bacha hai.');
         }
       }
 
@@ -1401,6 +1554,8 @@
       // ====================================================================
       function enterAdminDashboard() {
         state.isAdminLoggedIn = true;
+        try { localStorage.setItem('kirana_owner_session', 'ACTIVE'); } catch (e) {}
+
         document.getElementById('authGateView').classList.add('hidden');
         document.getElementById('mainAppWrapper').classList.add('hidden');
         document.getElementById('adminPanelView').classList.remove('hidden');
@@ -1414,6 +1569,7 @@
 
       function exitAdminDashboard() {
         state.isAdminLoggedIn = false;
+        try { localStorage.removeItem('kirana_owner_session'); } catch (e) {}
         stopAdminLiveSync();
         document.getElementById('adminPanelView').classList.add('hidden');
         if (state.isLoggedIn) {
@@ -1448,23 +1604,23 @@
         showToast('🔄 Live Neon DB Orders Synced!');
       });
 
-      // Fetch Orders from Backend (GET /api/admin/orders)
+      // Fetch Orders from Backend (GET /api/admin/orders with Date & Status filters)
       async function fetchAdminOrders(isSilent = false) {
         try {
-          const res = await fetch('/api/admin/orders');
+          const date = state.adminDateFilter || 'all';
+          const status = state.adminOrderFilter || 'ALL';
+          const res = await fetch(`/api/admin/orders?date=${encodeURIComponent(date)}&status=${encodeURIComponent(status)}`);
           if (res.ok) {
             const data = await res.json();
             const prevCount = state.adminLiveOrders.length;
             state.adminLiveOrders = data.orders || [];
             renderAdminOrders();
 
-            // Notify if a brand new customer order arrived
             if (isSilent && state.adminLiveOrders.length > prevCount && prevCount > 0) {
               showToast('🔔 NEW CUSTOMER ORDER RECEIVED! Check Live Feed.');
             }
           }
         } catch (err) {
-          // If server is local without internet or mock, use local orders
           renderAdminOrders();
         }
       }
@@ -1475,6 +1631,8 @@
           const res = await fetch('/api/admin/analytics');
           if (res.ok) {
             const data = await res.json();
+            document.getElementById('statTodayRevenue').textContent = '₹' + (data.today_revenue || 0).toLocaleString();
+            document.getElementById('statTodayOrdersCount').textContent = data.today_orders || 0;
             document.getElementById('statTotalRevenue').textContent = '₹' + (data.total_revenue || 0).toLocaleString();
             document.getElementById('statTotalOrders').textContent = data.total_orders || 0;
             document.getElementById('statPendingOrders').textContent = data.pending_orders || 0;
@@ -1483,12 +1641,13 @@
           }
         } catch (e) {}
 
-        // Fallback calculations
         const list = state.adminLiveOrders.length ? state.adminLiveOrders : state.orders;
         const totalRev = list.reduce((sum, o) => sum + (o.total_amount || 0), 0);
         const pending = list.filter(o => o.status === 'NEW').length;
         const delivered = list.filter(o => o.status === 'DELIVERED').length;
 
+        document.getElementById('statTodayRevenue').textContent = '₹' + totalRev.toLocaleString();
+        document.getElementById('statTodayOrdersCount').textContent = list.length;
         document.getElementById('statTotalRevenue').textContent = '₹' + totalRev.toLocaleString();
         document.getElementById('statTotalOrders').textContent = list.length;
         document.getElementById('statPendingOrders').textContent = pending;
@@ -1605,7 +1764,36 @@
 
       document.getElementById('adminOrderStatusFilter').addEventListener('change', (e) => {
         state.adminOrderFilter = e.target.value;
-        renderAdminOrders();
+        fetchAdminOrders();
+      });
+
+      document.getElementById('adminOrderDateFilter').addEventListener('change', (e) => {
+        state.adminDateFilter = e.target.value;
+        fetchAdminOrders();
+      });
+
+      // Auto Delivery Simulator (Demonstrates live progression from NEW -> PACKED -> OUT_FOR_DELIVERY -> DELIVERED)
+      let autoDeliveryTimer = null;
+      document.getElementById('toggleAutoDelivery').addEventListener('change', (e) => {
+        state.autoDeliveryActive = e.target.checked;
+        if (state.autoDeliveryActive) {
+          showToast('⚡ Live Delivery Progression Simulator Started! (Auto-advancing every 20s)');
+          if (autoDeliveryTimer) clearInterval(autoDeliveryTimer);
+          autoDeliveryTimer = setInterval(async () => {
+            if (!state.isAdminLoggedIn || !state.autoDeliveryActive) return;
+            const orders = state.adminLiveOrders;
+            const nextToAdvance = orders.find(o => o.status === 'NEW' || o.status === 'PACKED' || o.status === 'OUT_FOR_DELIVERY');
+            if (nextToAdvance) {
+              let nextStatus = 'PACKED';
+              if (nextToAdvance.status === 'PACKED') nextStatus = 'OUT_FOR_DELIVERY';
+              else if (nextToAdvance.status === 'OUT_FOR_DELIVERY') nextStatus = 'DELIVERED';
+              await updateOrderStatus(nextToAdvance.order_id, nextStatus);
+            }
+          }, 20000);
+        } else {
+          if (autoDeliveryTimer) clearInterval(autoDeliveryTimer);
+          showToast('⚡ Live Delivery Progression Simulator Paused.');
+        }
       });
 
       // Admin Tab Navigation
@@ -2112,11 +2300,66 @@
         }
 
         profOrders.innerHTML = state.orders.map(ord => {
-          const itemsHtml = ord.items.map(it => `
+          const rawItems = Array.isArray(ord.items) ? ord.items : (ord.items ? JSON.parse(ord.items) : []);
+          const itemsHtml = rawItems.map(it => `
             <span class="inline-flex items-center gap-1 bg-white border border-slate-200 px-2.5 py-1 rounded-lg text-xs text-slate-700">
               <strong>${it.qty}x</strong> ${it.name} (${it.unit}) — ₹${it.price * it.qty}
             </span>
           `).join(' ');
+
+          const isHomeDelivery = ord.order_mode === 'Home Delivery' || ord.order_mode === 'HOME_DELIVERY';
+
+          // Multi-stage Tracker for Home Delivery
+          let trackerHtml = '';
+          if (isHomeDelivery) {
+            const isPlaced = true;
+            const isPacked = ord.status === 'PACKED' || ord.status === 'OUT_FOR_DELIVERY' || ord.status === 'DELIVERED';
+            const isOut = ord.status === 'OUT_FOR_DELIVERY' || ord.status === 'DELIVERED';
+            const isDelivered = ord.status === 'DELIVERED';
+
+            let remainingTimeText = '🕒 Packing in store (~15-20 mins)';
+            if (ord.status === 'PACKED') remainingTimeText = '📦 Order Packed • Rider arriving soon (~10-15 mins)';
+            else if (ord.status === 'OUT_FOR_DELIVERY') remainingTimeText = '🛵 Rider on the way to your door (~5-8 mins)';
+            else if (ord.status === 'DELIVERED') remainingTimeText = '🎉 Successfully Delivered at your doorstep!';
+
+            trackerHtml = `
+              <div class="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 space-y-2 mt-2">
+                <div class="flex items-center justify-between text-xs font-bold text-emerald-900">
+                  <span>🚚 Home Delivery Live Tracker</span>
+                  <span class="text-[11px] font-mono text-emerald-700">${remainingTimeText}</span>
+                </div>
+                <div class="grid grid-cols-4 gap-1 text-center text-[10px] font-bold">
+                  <div class="${isPlaced ? 'text-emerald-700' : 'text-slate-400'}">
+                    <div class="h-1.5 rounded-full ${isPlaced ? 'bg-emerald-500' : 'bg-slate-200'} mb-1"></div>
+                    1. Placed
+                  </div>
+                  <div class="${isPacked ? 'text-emerald-700' : 'text-slate-400'}">
+                    <div class="h-1.5 rounded-full ${isPacked ? 'bg-emerald-500' : 'bg-slate-200'} mb-1"></div>
+                    2. Packed
+                  </div>
+                  <div class="${isOut ? 'text-emerald-700' : 'text-slate-400'}">
+                    <div class="h-1.5 rounded-full ${isOut ? 'bg-emerald-500' : 'bg-slate-200'} mb-1"></div>
+                    3. Out for Delivery
+                  </div>
+                  <div class="${isDelivered ? 'text-emerald-700' : 'text-slate-400'}">
+                    <div class="h-1.5 rounded-full ${isDelivered ? 'bg-emerald-500' : 'bg-slate-200'} mb-1"></div>
+                    4. Delivered
+                  </div>
+                </div>
+              </div>
+            `;
+          } else {
+            let pickupText = '🕒 Preparing at shop counter';
+            if (ord.status === 'PACKED' || ord.status === 'OUT_FOR_DELIVERY') pickupText = '🛍️ Ready for Pickup at Shop Counter!';
+            else if (ord.status === 'DELIVERED') pickupText = '✅ Handed Over at Counter';
+
+            trackerHtml = `
+              <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-2.5 text-xs mt-2 flex items-center justify-between">
+                <span class="font-bold text-amber-900">🏪 Counter Pickup Status:</span>
+                <span class="font-bold text-amber-800">${pickupText}</span>
+              </div>
+            `;
+          }
 
           const statusBadge = {
             'NEW': 'bg-amber-100 text-amber-800 border-amber-300',
@@ -2145,6 +2388,7 @@
                 </div>
               </div>
               <div class="flex flex-wrap gap-1.5">${itemsHtml}</div>
+              ${trackerHtml}
             </div>
           `;
         }).join('');
@@ -2431,52 +2675,66 @@
       document.getElementById('btnAdminOpenAddItem').addEventListener('click', openAddSku);
       document.getElementById('btnCloseAddSkuModal').addEventListener('click', closeAddSku);
       document.getElementById('btnCancelAddSku').addEventListener('click', closeAddSku);
+      // Category dropdown change to show custom category input
+      document.getElementById('newSkuCategory').addEventListener('change', (e) => {
+        const isNew = e.target.value === '__NEW_CATEGORY__';
+        document.getElementById('newCategoryWrapper').classList.toggle('hidden', !isNew);
+        if (isNew) document.getElementById('customCategoryInput').focus();
+      });
+
       document.getElementById('formAddSku').addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = document.getElementById('newSkuName').value.trim();
         const brand = document.getElementById('newSkuBrand').value.trim();
-        const category = document.getElementById('newSkuCategory').value;
+        let category = document.getElementById('newSkuCategory').value;
+        let customCategoryName = '';
+        if (category === '__NEW_CATEGORY__') {
+          customCategoryName = document.getElementById('customCategoryInput').value.trim();
+          if (!customCategoryName) {
+            showToast('⚠️ Please enter a name for the new category!');
+            return;
+          }
+          category = customCategoryName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        }
+
         const unit = document.getElementById('newSkuUnit').value.trim();
-        const price = parseInt(document.getElementById('newSkuPrice').value, 10) || 45;
-        const mrp = Math.max(price, parseInt(document.getElementById('newSkuMrp').value, 10) || price + 5);
-
-        const newId = catalog.length + 1;
-        const sku = 'SKU-' + String(newId).padStart(5, '0');
-        const newItem = {
-          id: newId,
-          sku,
-          name: brand + ' ' + name,
-          brand,
-          category,
-          photoKey: category,
-          subcategory: name,
-          icon: category === 'chocolates' ? '🍫' : '⭐',
-          unit,
-          price,
-          mrp,
-          stock: 50,
-          rating: '4.9',
-          search_blob: (sku + ' ' + brand + ' ' + name + ' ' + unit).toLowerCase()
-        };
-
-        catalog.unshift(newItem);
-        closeAddSku();
-        renderProducts();
-        renderAdminInventory();
+        const price = parseInt(document.getElementById('newSkuPrice').value, 10);
+        const mrp = parseInt(document.getElementById('newSkuMrp').value, 10);
+        const image_url = document.getElementById('newSkuImage').value.trim();
 
         try {
-          await fetch('/api/admin/products', {
+          const res = await fetch('/api/admin/products', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newItem)
+            body: JSON.stringify({ name, brand, category, customCategoryName, unit, price, mrp, image_url })
           });
-        } catch (e) {}
-
-        showToast('✅ Added ' + newItem.name + ' to Shop & Neon DB!');
+          const data = await res.json();
+          if (data.status === 'ok') {
+            showToast('✅ Added ' + name + ' to Shop Catalog!');
+            closeAddSku();
+            renderProducts();
+            renderAdminInventory();
+          }
+        } catch (err) {
+          showToast('Error adding product to shop.');
+        }
       });
 
       // Initial Render
       renderAll();
+
+      // AUTO-RESTORE SESSION ON PAGE REFRESH (Fixes admin getting kicked out)
+      try {
+        if (localStorage.getItem('kirana_owner_session') === 'ACTIVE') {
+          enterAdminDashboard();
+        } else if (localStorage.getItem('kirana_shop_user')) {
+          const savedUser = JSON.parse(localStorage.getItem('kirana_shop_user'));
+          if (savedUser && savedUser.phone) {
+            enterCustomerStorefront(savedUser);
+            fetchCustomerOrders(savedUser.phone);
+          }
+        }
+      } catch (e) {}
     })();
   </script>
 </body>

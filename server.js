@@ -1,6 +1,7 @@
 /**
  * VEDANT KIRANA SHOP & POS - EXPRESS + NEON POSTGRESQL SERVER
  * Features:
+ *  - Auto-loads .env file without external dependencies
  *  - High-performance Neon PostgreSQL JSONB catalog with B-Tree index on ((payload->>'price')::int)
  *  - Customer Orders & POS Billing API with Neon DB persistence
  *  - Dedicated Admin Panel Endpoints:
@@ -13,8 +14,31 @@
  */
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const { Pool } = require('pg');
 const { generateCatalog } = require('./database/seed_10500_items');
+
+// 1. Auto-read .env file if present
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  try {
+    const envLines = fs.readFileSync(envPath, 'utf8').split('\n');
+    envLines.forEach(line => {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) {
+        const key = match[1];
+        let val = (match[2] || '').trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) process.env[key] = val;
+      }
+    });
+    console.log("📁 Loaded environment variables from .env file.");
+  } catch (e) {
+    console.warn("Could not read .env file:", e.message);
+  }
+}
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -24,6 +48,12 @@ const PORT = process.env.PORT || 3000;
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
+
+if (pool) {
+  console.log("🔗 Neon PostgreSQL Pool initialized with DATABASE_URL.");
+} else {
+  console.log("⚠️ DATABASE_URL not detected. Running in Local Memory Fallback Mode.");
+}
 
 // In-memory fallback stores
 let fallbackCatalog = generateCatalog(10500);
@@ -36,7 +66,7 @@ let inMemoryOrders = [
     order_mode: 'Home Delivery',
     payment_method: 'UPI (rahul@okicici)',
     payment_ref: 'pay_P9kL82mN10xKirana',
-    status: 'PACKED', // NEW, PACKED, OUT_FOR_DELIVERY, DELIVERED, CANCELLED
+    status: 'PACKED',
     total_mrp: 156,
     total_amount: 138,
     total_savings: 18,
@@ -70,7 +100,6 @@ async function ensureDbSchema() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
-    // Ensure status column exists if table was created earlier without it
     await pool.query(`
       ALTER TABLE kirana_orders ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'NEW';
       ALTER TABLE kirana_orders ADD COLUMN IF NOT EXISTS customer_address TEXT DEFAULT '';
@@ -88,6 +117,7 @@ app.get('/api/status', async (req, res) => {
     return res.json({
       mode: 'LOCAL_MEMORY_FALLBACK',
       database: 'Neon PostgreSQL (Ready to connect via DATABASE_URL)',
+      connected: false,
       total_skus: fallbackCatalog.length,
       under_50_skus: fallbackCatalog.filter(i => i.price < 50).length
     });
@@ -102,11 +132,12 @@ app.get('/api/status', async (req, res) => {
     `);
     res.json({
       mode: 'NEON_POSTGRES_LIVE',
+      connected: true,
       latency_ms: Date.now() - start,
       ...rows[0]
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ mode: 'NEON_ERROR', connected: false, error: err.message });
   }
 });
 
@@ -241,7 +272,7 @@ app.post('/api/orders', async (req, res) => {
   // Always store in memory for instant local feed
   inMemoryOrders.unshift(orderRecord);
 
-  // Persist into Neon PostgreSQL
+  // Persist directly into Neon PostgreSQL
   if (pool) {
     try {
       await pool.query(
@@ -264,12 +295,14 @@ app.post('/api/orders', async (req, res) => {
           JSON.stringify(orderRecord.items)
         ]
       );
+      console.log(`✅ Order #${orderRecord.order_id} successfully saved to Neon PostgreSQL table kirana_orders!`);
     } catch (err) {
-      console.error("Neon DB Order Insert Warning:", err.message);
+      console.error("❌ Neon DB Order Insert Error:", err.message);
     }
+  } else {
+    console.warn(`⚠️ Order #${orderRecord.order_id} saved to Memory only (DATABASE_URL not set in PM2).`);
   }
 
-  console.log(`🛒 New Order Received: #${orderRecord.order_id} - ₹${orderRecord.total_amount} by ${orderRecord.customer_name}`);
   res.json({ status: 'ok', order_id: orderRecord.order_id });
 });
 
@@ -301,7 +334,6 @@ app.get('/api/admin/orders', async (req, res) => {
         LIMIT 100
       `);
 
-      // Merge any fresh in-memory orders that might have arrived recently
       const dbIds = new Set(rows.map(r => r.order_id));
       const freshMemory = inMemoryOrders.filter(o => !dbIds.has(o.order_id));
       const combined = [...freshMemory, ...rows];

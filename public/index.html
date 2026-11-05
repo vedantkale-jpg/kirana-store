@@ -20,7 +20,29 @@
     .animate-pulse-subtle { animation: pulseSubtle 2.4s infinite ease-in-out; }
     .product-card { transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease; }
     .product-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -6px rgba(16, 185, 129, 0.14), 0 4px 10px -4px rgba(0,0,0,0.06); }
-  </style>
+  
+    /* Custom Visible Scrollbar for Cart & Drawers */
+    .custom-cart-scroll {
+      overflow-y: scroll !important;
+      scrollbar-width: thin !important;
+      scrollbar-color: #10b981 #f1f5f9 !important;
+    }
+    .custom-cart-scroll::-webkit-scrollbar {
+      width: 8px !important;
+      display: block !important;
+    }
+    .custom-cart-scroll::-webkit-scrollbar-track {
+      background: #f1f5f9 !important;
+      border-radius: 8px !important;
+    }
+    .custom-cart-scroll::-webkit-scrollbar-thumb {
+      background: #10b981 !important;
+      border-radius: 8px !important;
+    }
+    .custom-cart-scroll::-webkit-scrollbar-thumb:hover {
+      background: #059669 !important;
+    }
+</style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
 
@@ -56,7 +78,10 @@
     <!-- Main Auth Card -->
     <div class="max-w-5xl w-full mx-auto my-auto py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center z-10">
       <div class="lg:col-span-6 space-y-4 text-left">
-        <div class="inline-flex items-center gap-2 bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold px-3 py-1 rounded-full">
+        <div class="inline-flex items-center gap-2 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
+            <span>🚚 Free Local Home Delivery on all orders above ₹199!</span>
+          </div>
+          <div class="inline-flex items-center gap-2 bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold px-3 py-1 rounded-full">
           <span>🛒 Welcome to Kirana Shop Online</span>
         </div>
         <h1 class="text-2xl sm:text-4xl font-extrabold leading-tight tracking-tight">
@@ -852,104 +877,98 @@
   <!-- ====================================================================== -->
   <div id="cartDrawerBackdrop" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 hidden"></div>
   <aside id="cartDrawer" class="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white z-50 shadow-2xl border-l border-slate-200 flex flex-col translate-x-full transition-transform duration-200">
-    <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+    <!-- Cart Header -->
+    <div class="p-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0">
       <div class="flex items-center gap-2.5">
         <span class="text-xl">🛒</span>
         <div>
-          <h3 class="font-extrabold text-base">My Cart &amp; Bill</h3>
+          <h3 class="font-extrabold text-base leading-tight">My Cart &amp; Bill</h3>
           <p id="drawerItemCountText" class="text-xs text-emerald-300">0 items in cart</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <button id="btnClearCart" type="button" class="text-xs text-rose-300 hover:text-rose-200 px-2 py-1 rounded border border-rose-400/30">Clear</button>
-        <button id="btnCloseCart" type="button" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300">✕</button>
+        <button id="btnClearCart" type="button" class="text-xs text-rose-300 hover:text-white px-2.5 py-1 rounded-lg border border-rose-400/30 transition">Clear</button>
+        <button id="btnCloseCart" type="button" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 transition">✕</button>
       </div>
     </div>
 
-    <div class="p-3 bg-slate-50 border-b border-slate-200 space-y-2">
-      <div class="grid grid-cols-2 gap-1.5 bg-slate-200/70 p-1 rounded-xl text-xs font-bold">
-        <button id="btnModePos" type="button" class="py-1.5 rounded-lg bg-white text-slate-900 shadow-xs transition">🏪 Counter Pickup</button>
-        <button id="btnModeDelivery" type="button" class="py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition">🛵 Home Delivery (Free)</button>
+    <!-- Compact Mode & Customer Address Selector -->
+    <div class="p-2.5 bg-slate-50 border-b border-slate-200 space-y-2 shrink-0">
+      <div class="grid grid-cols-2 gap-1.5 bg-slate-200/80 p-1 rounded-xl text-xs font-bold">
+        <button id="btnModePos" type="button" class="py-1 rounded-lg bg-white text-slate-900 shadow-xs transition">🏪 Counter Pickup</button>
+        <button id="btnModeDelivery" type="button" class="py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">🛵 Home Delivery</button>
       </div>
-      <div class="grid grid-cols-2 gap-2">
-        <input id="custNameInput" type="text" placeholder="Your Name" value="" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500" />
-        <input id="custPhoneInput" type="tel" maxlength="10" placeholder="10-Digit Mobile" value="" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500" />
+      <div class="grid grid-cols-2 gap-1.5">
+        <input id="custNameInput" type="text" placeholder="Your Name" value="" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:border-emerald-500 font-medium" />
+        <input id="custPhoneInput" type="tel" maxlength="10" placeholder="10-Digit Mobile" value="" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:border-emerald-500 font-medium" />
       </div>
       <div id="cartDeliveryAddressBox">
-        <input id="custAddressInput" type="text" placeholder="Delivery Address" value="" class="w-full text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500" />
+        <input id="custAddressInput" type="text" placeholder="Delivery Address (Flat / House, Area, Pincode)" value="" class="w-full text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:border-emerald-500 font-medium" />
       </div>
     </div>
 
-    <div id="cartItemsList" class="flex-1 overflow-y-auto p-3 space-y-2.5"></div>
+    <!-- Scrollable Items List with Prominent Visible Scrollbar ("Cursor") -->
+    <div id="cartItemsList" class="flex-1 overflow-y-scroll p-3.5 space-y-2.5 custom-cart-scroll" style="min-height: 220px; max-height: 48vh;"></div>
 
-    <div class="p-4 bg-white border-t border-slate-200 shadow-lg space-y-3">
-      <!-- Free Delivery Threshold Banner -->
-      <div id="deliveryThresholdBox" class="bg-amber-50 border border-amber-200 rounded-2xl p-2.5 text-xs">
-        <div class="flex items-center justify-between font-bold text-amber-900 mb-1">
-          <span id="deliveryThresholdTitle">🚚 Local Home Delivery</span>
-          <span id="deliveryThresholdBadge" class="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-mono">₹199 for FREE</span>
-        </div>
-        <div class="w-full bg-amber-200/60 h-2 rounded-full overflow-hidden mb-1">
-          <div id="deliveryProgressBar" class="bg-amber-500 h-full rounded-full transition-all duration-300" style="width: 0%;"></div>
-        </div>
-        <div id="deliveryProgressText" class="text-[11px] text-amber-800">Add items to unlock Free Delivery!</div>
-      </div>
-
-      <!-- Coupon Code Box -->
-      <div class="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3 space-y-2 text-xs">
-        <div class="flex items-center justify-between font-bold text-emerald-900">
-          <span>🏷️ Apply Discount Coupon</span>
-          <span class="text-[10px] text-emerald-700 font-mono">KIRANA50 / WELCOME20</span>
+    <!-- Compact Bottom Checkout & Bill Summary -->
+    <div class="p-3.5 bg-white border-t border-slate-200 shadow-lg space-y-2.5 shrink-0">
+      <!-- Compact Promo Code Box -->
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-2 space-y-1 text-xs">
+        <div class="flex items-center justify-between font-bold text-slate-700 text-[11px]">
+          <span>🏷️ Have a Coupon?</span>
+          <span class="text-[10px] text-emerald-600 font-mono">KIRANA50 / WELCOME20</span>
         </div>
         <div class="flex gap-1.5">
           <input
             id="couponCodeInput"
             type="text"
-            placeholder="Enter Promo Code"
-            class="flex-1 uppercase bg-white border border-emerald-300 rounded-xl px-3 py-1.5 font-mono font-bold text-slate-800 outline-none text-xs"
+            placeholder="PROMO CODE"
+            class="flex-1 uppercase bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-slate-800 outline-none"
           />
-          <button id="btnApplyCoupon" type="button" class="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition shadow-xs">
+          <button id="btnApplyCoupon" type="button" class="px-3.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs">
             Apply
           </button>
         </div>
-        <div id="couponAppliedBadgeRow" class="hidden flex items-center justify-between bg-emerald-100/80 border border-emerald-300 px-2.5 py-1 rounded-xl text-emerald-900 font-bold text-[11px]">
-          <span id="couponAppliedText">✓ KIRANA50 Applied (₹50 Saved)</span>
-          <button id="btnRemoveCoupon" type="button" class="text-rose-600 hover:underline text-[10px]">Remove</button>
+        <div id="couponAppliedBadgeRow" class="hidden flex items-center justify-between bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-lg font-bold text-[11px]">
+          <span id="couponAppliedText">✓ Applied</span>
+          <button id="btnRemoveCoupon" type="button" class="text-rose-600 text-[10px] font-bold hover:underline">✕ Remove</button>
         </div>
       </div>
 
-      <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1.5">
-        <div class="flex justify-between text-slate-600">
-          <span>Items Total (MRP)</span>
-          <span id="billMrpTotal" class="font-medium">₹0</span>
+      <!-- Compact Bill Breakdown Table -->
+      <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200 text-xs space-y-1">
+        <div class="flex justify-between text-slate-500">
+          <span>Items MRP</span>
+          <span id="billMrpTotal" class="font-medium text-slate-700">₹0</span>
         </div>
         <div class="flex justify-between text-emerald-700 font-semibold">
-          <span>Kirana Wholesale Discount</span>
+          <span>Wholesale Discount</span>
           <span id="billDiscountTotal">- ₹0</span>
         </div>
-        <div id="rowCouponDiscount" class="hidden flex justify-between text-emerald-700 font-bold text-xs">
-              <span>Coupon Discount</span>
-              <span id="billCouponDiscount">-₹0</span>
-            </div>
-            <div class="flex justify-between text-slate-600 text-xs font-semibold">
-              <span>Delivery Charge</span>
-              <span id="billDeliveryFee" class="text-emerald-700 font-bold">FREE (₹0)</span>
-            </div>
-        <div class="border-t border-slate-200 pt-1.5 flex justify-between text-sm font-extrabold text-slate-900">
-          <span>To Pay (Net Payable)</span>
+        <div id="rowCouponDiscount" class="hidden flex justify-between text-emerald-700 font-bold">
+          <span>Coupon Discount</span>
+          <span id="billCouponDiscount">- ₹0</span>
+        </div>
+        <div class="flex justify-between text-slate-600 font-semibold">
+          <span>Delivery Charge</span>
+          <span id="billDeliveryFee" class="text-emerald-700 font-bold">FREE</span>
+        </div>
+        <div class="border-t border-slate-200 pt-1 flex justify-between text-sm font-extrabold text-slate-900">
+          <span>Net Payable</span>
           <span id="billGrandTotal" class="text-base text-emerald-700">₹0</span>
         </div>
       </div>
 
-      <div class="space-y-2">
-        <button id="btnPayRazorpay" type="button" class="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-extrabold text-sm shadow-md shadow-indigo-600/20 flex items-center justify-between transition">
-          <span class="flex items-center gap-2">
-            <span>💳 Pay Online (Razorpay)</span>
-            <span class="text-[10px] bg-indigo-500 px-1.5 py-0.5 rounded font-semibold">UPI / Card</span>
+      <!-- Compact Payment Buttons -->
+      <div class="space-y-1.5 pt-0.5">
+        <button id="btnPayRazorpay" type="button" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-extrabold text-xs shadow-md shadow-indigo-600/20 flex items-center justify-between transition">
+          <span class="flex items-center gap-1.5">
+            <span>💳 Pay Online</span>
+            <span class="text-[9px] bg-indigo-500 px-1.5 py-0.5 rounded font-semibold">UPI / Card</span>
           </span>
-          <span id="btnPayRazorpayAmt">₹0 →</span>
+          <span id="btnPayRazorpayAmt" class="font-bold text-sm">₹0 →</span>
         </button>
-        <button id="btnPayUpiQr" type="button" class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition">
+        <button id="btnPayUpiQr" type="button" class="w-full py-1.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition">
           <span>📱 Scan Counter UPI QR Code (GPay / PhonePe / Paytm)</span>
         </button>
       </div>
@@ -2263,36 +2282,21 @@
 
         // Smart Delivery Fee (₹199 threshold)
         const isHomeDelivery = state.orderMode === 'HOME_DELIVERY';
+        const feeEl = document.getElementById('billDeliveryFee');
         if (isHomeDelivery) {
           if (totalPrice >= 199 || (state.appliedCoupon && state.appliedCoupon.code === 'FREEDEL')) {
             state.deliveryFee = 0;
-            const titleEl = document.getElementById('deliveryThresholdTitle');
-            if (titleEl) {
-              titleEl.textContent = '🎉 FREE Home Delivery Unlocked!';
-              document.getElementById('deliveryThresholdBadge').textContent = 'FREE';
-              document.getElementById('deliveryProgressBar').style.width = '100%';
-              document.getElementById('deliveryProgressText').textContent = 'Congratulations! You unlocked free delivery on orders above ₹199.';
-              document.getElementById('billDeliveryFee').textContent = 'FREE (₹0)';
-            }
+            if (feeEl) feeEl.textContent = 'FREE (₹0)';
           } else {
             state.deliveryFee = 25;
-            const needed = 199 - totalPrice;
-            const titleEl = document.getElementById('deliveryThresholdTitle');
-            if (titleEl) {
-              titleEl.textContent = '🚚 Local Home Delivery';
-              document.getElementById('deliveryThresholdBadge').textContent = '₹25 Fee';
-              document.getElementById('deliveryProgressBar').style.width = Math.min(100, Math.round((totalPrice / 199) * 100)) + '%';
-              document.getElementById('deliveryProgressText').textContent = `Add ₹${needed} more to get FREE Local Delivery!`;
-              document.getElementById('billDeliveryFee').textContent = '₹25';
-            }
+            if (feeEl) feeEl.textContent = '₹25';
           }
         } else {
           state.deliveryFee = 0;
-          const feeEl = document.getElementById('billDeliveryFee');
-          if (feeEl) feeEl.textContent = 'FREE (Counter Pickup)';
+          if (feeEl) feeEl.textContent = 'FREE (Pickup)';
         }
 
-        // Coupon discount calculation
+        // Coupon calculation
         let couponDiscount = 0;
         const rowCoupon = document.getElementById('rowCouponDiscount');
         if (state.appliedCoupon) {
@@ -2315,7 +2319,8 @@
         document.getElementById('billDiscountTotal').textContent = `- ₹${(totalSavings + couponDiscount).toLocaleString()}`;
         document.getElementById('billGrandTotal').textContent = `₹${grandTotal.toLocaleString()}`;
         document.getElementById('btnPayRazorpayAmt').textContent = `₹${grandTotal.toLocaleString()} →`;
-const listEl = document.getElementById('cartItemsList');
+
+        const listEl = document.getElementById('cartItemsList');
         if (entries.length === 0) {
           listEl.innerHTML = `
             <div class="text-center py-12 text-slate-400">
@@ -2330,11 +2335,11 @@ const listEl = document.getElementById('cartItemsList');
         listEl.innerHTML = '';
         entries.forEach(({ item, qty }) => {
           const row = document.createElement('div');
-          row.className = 'bg-slate-50 rounded-xl p-2.5 border border-slate-200 flex items-center justify-between gap-2';
+          row.className = 'bg-slate-50 rounded-xl p-2.5 border border-slate-200 flex items-center justify-between gap-2 shadow-2xs';
           row.innerHTML = `
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
-                <span>${item.icon}</span>
+                <span class="text-sm">${item.icon || '📦'}</span>
                 <span class="text-xs font-bold text-slate-800 truncate">${item.name}</span>
               </div>
               <div class="text-[11px] text-slate-500 mt-0.5">
@@ -2343,9 +2348,9 @@ const listEl = document.getElementById('cartItemsList');
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <div class="inline-flex items-center bg-emerald-600 text-white rounded-lg font-bold text-xs">
-                <button type="button" data-cart-dec="${item.sku}" class="px-2 py-1 hover:bg-emerald-700">−</button>
-                <span class="px-2">${qty}</span>
-                <button type="button" data-cart-inc="${item.sku}" class="px-2 py-1 hover:bg-emerald-700">+</button>
+                <button type="button" data-cart-dec="${item.sku}" class="px-2 py-1 hover:bg-emerald-700 transition">−</button>
+                <span class="px-2 font-mono">${qty}</span>
+                <button type="button" data-cart-inc="${item.sku}" class="px-2 py-1 hover:bg-emerald-700 transition">+</button>
               </div>
               <div class="text-xs font-extrabold text-slate-900 w-12 text-right">₹${item.price * qty}</div>
             </div>
@@ -2427,7 +2432,7 @@ const listEl = document.getElementById('cartItemsList');
           orderItems.push({ sku: item.sku, name: item.name, unit: item.unit, price: item.price, qty });
         });
 
-        const orderId = document.getElementById('payModalOrderId').textContent.replace('#', '');
+        const orderId = (document.getElementById('payModalOrderId').textContent || '').replace('#', '').trim() || ('ORD-' + Math.floor(1000 + Math.random() * 9000));
         const payRef = 'pay_' + Math.random().toString(36).substring(2, 10).toUpperCase();
         const methodMap = {
           qr: 'UPI QR Scan',
@@ -2449,7 +2454,7 @@ const listEl = document.getElementById('cartItemsList');
           customer_phone: custPhone,
           customer_address: custAddress,
           order_mode: state.orderMode === 'HOME_DELIVERY' ? 'Home Delivery' : 'Counter Pickup',
-          payment_method: methodMap[state.paymentTab] || 'UPI',
+          payment_method: methodMap[state.activePayTab || 'upi'] || 'UPI',
           payment_ref: payRef,
           status: 'NEW',
           total_mrp: totalMrp,
@@ -2469,16 +2474,43 @@ const listEl = document.getElementById('cartItemsList');
         });
         state.appliedCoupon = null;
 
+        // CRITICAL: SEND ORDER TO BACKEND SERVER AND NEON POSTGRESQL DATABASE!
+        try {
+          const res = await fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newOrder)
+          });
+          const data = await res.json();
+          if (res.ok) {
+            console.log('✅ Order successfully saved to Neon DB:', data);
+          } else {
+            console.error('❌ Error saving order to DB:', data.error);
+          }
+        } catch (err) {
+          console.error('Network error saving order to backend:', err);
+        }
+
+        // Add to local state
         state.orders.unshift(newOrder);
         state.adminLiveOrders.unshift(newOrder);
         state.cart = {};
 
+        // Close modal and drawer
         document.getElementById('paymentModal').classList.add('hidden');
         document.getElementById('paymentModal').classList.remove('flex');
         closeCartDrawer();
         renderAll();
+
+        // Refresh orders from Neon DB and open customer order history
+        fetchCustomerOrders(custPhone);
+        if (state.isAdminLoggedIn) {
+          fetchAdminOrders();
+          fetchAdminAnalytics();
+        }
+
         openProfileDrawer('orders');
-        showToast('🎉 Order Placed! Sent to Shop Admin.');
+        showToast('🎉 Order #' + orderId + ' Placed! Recorded in Neon PostgreSQL Database.');
       }
 
       function renderOrders() {

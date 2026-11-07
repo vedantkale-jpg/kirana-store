@@ -356,7 +356,7 @@ app.get('/api/admin/customers', async (req, res) => {
   if (pool) {
     try {
       const { rows } = await pool.query(`
-        SELECT id, name, phone, address, to_char(created_at, 'DD Mon YYYY, HH12:MI AM') AS created_at
+        SELECT id, name, phone, address, to_char(created_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon YYYY, HH12:MI AM') AS created_at
         FROM kirana_customers
         ORDER BY created_at DESC
         LIMIT 100
@@ -634,7 +634,7 @@ app.get('/api/orders', async (req, res) => {
            total_amount,
            total_savings,
            items_payload AS items,
-           to_char(created_at, 'DD Mon YYYY, HH12:MI AM') AS created_at
+           to_char(created_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon YYYY, HH12:MI AM') AS created_at
          FROM kirana_orders
          WHERE customer_phone = $1
          ORDER BY created_at DESC`,
@@ -663,13 +663,13 @@ app.get('/api/admin/orders', async (req, res) => {
       let conditions = [];
       let values = [];
 
-      if (date === 'today') {
-        conditions.push(`created_at::date = CURRENT_DATE`);
-      } else if (date === 'yesterday') {
-        conditions.push(`created_at::date = CURRENT_DATE - INTERVAL '1 day'`);
-      } else if (date !== 'all' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      if (date && date !== 'all' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
         values.push(date);
-        conditions.push(`created_at::date = $${values.length}`);
+        conditions.push(`(created_at AT TIME ZONE 'Asia/Kolkata')::date = $${values.length}::date`);
+      } else if (date === 'today') {
+        conditions.push(`(created_at AT TIME ZONE 'Asia/Kolkata')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date`);
+      } else if (date === 'yesterday') {
+        conditions.push(`(created_at AT TIME ZONE 'Asia/Kolkata')::date = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '1 day')::date`);
       }
 
       if (status !== 'ALL') {
@@ -693,7 +693,7 @@ app.get('/api/admin/orders', async (req, res) => {
            total_amount,
            total_savings,
            items_payload AS items,
-           to_char(created_at, 'DD Mon YYYY, HH12:MI AM') AS created_at,
+           to_char(created_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon YYYY, HH12:MI AM') AS created_at,
            to_char(created_at, 'YYYY-MM-DD') AS order_date
          FROM kirana_orders
          ${whereClause}
@@ -734,45 +734,117 @@ app.patch('/api/admin/orders/:id/status', async (req, res) => {
   res.json({ status: 'ok', order_id: orderId, updated_status: status });
 });
 
-// 3. Admin Analytics & Sales Metrics (Today vs Lifetime)
+// 3. Admin Analytics & Sales Metrics (Date-Specific & Lifetime)
 app.get('/api/admin/analytics', async (req, res) => {
+  const { date = 'today' } = req.query;
+
   if (pool) {
     try {
-      const { rows } = await pool.query(`
+      // 1. Lifetime totals
+      const lifetimeRes = await pool.query(`
         SELECT
-          COUNT(*)::int AS total_orders,
-          COALESCE(SUM(total_amount), 0)::int AS total_revenue,
-          COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)::int AS today_orders,
-          COALESCE(SUM(total_amount) FILTER (WHERE created_at::date = CURRENT_DATE), 0)::int AS today_revenue,
-          COUNT(*) FILTER (WHERE status = 'NEW')::int AS pending_orders,
-          COUNT(*) FILTER (WHERE status = 'PACKED')::int AS packed_orders,
-          COUNT(*) FILTER (WHERE status = 'OUT_FOR_DELIVERY')::int AS out_for_delivery_orders,
-          COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS delivered_orders
+          COUNT(*)::int AS lifetime_orders,
+          COALESCE(SUM(total_amount), 0)::int AS lifetime_revenue,
+          COUNT(*) FILTER (WHERE status = 'NEW')::int AS lifetime_pending,
+          COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS lifetime_delivered
         FROM kirana_orders
       `);
-      return res.json({ source: 'NEON_POSTGRES_DB', ...rows[0] });
+      const lifetime = lifetimeRes.rows[0];
+
+      // 2. Filtered date totals
+      let dateCondition = '';
+      let values = [];
+      if (date && date !== 'all' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        values.push(date);
+        dateCondition = `WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date`;
+      } else if (date === 'today') {
+        dateCondition = `WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date`;
+      } else if (date === 'yesterday') {
+        dateCondition = `WHERE (created_at AT TIME ZONE 'Asia/Kolkata')::date = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '1 day')::date`;
+      }
+
+      const filteredRes = await pool.query(`
+        SELECT
+          COUNT(*)::int AS period_orders,
+          COALESCE(SUM(total_amount), 0)::int AS period_revenue,
+          COUNT(*) FILTER (WHERE status = 'NEW')::int AS period_pending,
+          COUNT(*) FILTER (WHERE status = 'PACKED')::int AS period_packed,
+          COUNT(*) FILTER (WHERE status = 'OUT_FOR_DELIVERY')::int AS period_out_for_delivery,
+          COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS period_delivered
+        FROM kirana_orders
+        ${dateCondition}
+      `, values);
+      const period = filteredRes.rows[0];
+
+      return res.json({
+        source: 'NEON_POSTGRES_DB',
+        date_filter: date,
+        period_revenue: period.period_revenue,
+        period_orders: period.period_orders,
+        period_pending: period.period_pending,
+        period_delivered: period.period_delivered,
+        lifetime_revenue: lifetime.lifetime_revenue,
+        lifetime_orders: lifetime.lifetime_orders,
+        lifetime_pending: lifetime.lifetime_pending,
+        lifetime_delivered: lifetime.lifetime_delivered,
+        today_revenue: period.period_revenue,
+        today_orders: period.period_orders,
+        total_revenue: lifetime.lifetime_revenue,
+        total_orders: lifetime.lifetime_orders,
+        pending_orders: period.period_pending,
+        delivered_orders: period.period_delivered
+      });
     } catch (err) {
       console.error("Analytics error, calculating from memory:", err.message);
     }
   }
 
-  const totalRevenue = inMemoryOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
-  const pendingOrders = inMemoryOrders.filter(o => o.status === 'NEW').length;
-  const packedOrders = inMemoryOrders.filter(o => o.status === 'PACKED').length;
-  const outOrders = inMemoryOrders.filter(o => o.status === 'OUT_FOR_DELIVERY').length;
-  const deliveredOrders = inMemoryOrders.filter(o => o.status === 'DELIVERED').length;
+  // Fallback in-memory
+  const totalRev = inMemoryOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const pending = inMemoryOrders.filter(o => o.status === 'NEW').length;
+  const delivered = inMemoryOrders.filter(o => o.status === 'DELIVERED').length;
 
   res.json({
     source: 'IN_MEMORY_STORE',
-    total_orders: inMemoryOrders.length,
-    total_revenue: totalRevenue,
-    today_orders: inMemoryOrders.length,
-    today_revenue: totalRevenue,
-    pending_orders: pendingOrders,
-    packed_orders: packedOrders,
-    out_for_delivery_orders: outOrders,
-    delivered_orders: deliveredOrders
+    date_filter: date,
+    period_revenue: totalRev,
+    period_orders: inMemoryOrders.length,
+    period_pending: pending,
+    period_delivered: delivered,
+    lifetime_revenue: totalRev,
+    lifetime_orders: inMemoryOrders.length,
+    lifetime_pending: pending,
+    lifetime_delivered: delivered
   });
+});
+
+// Admin Quick Stock Adjust Endpoint
+app.patch('/api/admin/products/:sku/stock', async (req, res) => {
+  const { sku } = req.params;
+  const { stock, delta } = req.body;
+
+  let target = fallbackCatalog.find(i => i.sku === sku);
+  let newStock = 50;
+  if (target) {
+    if (stock !== undefined) newStock = Math.max(0, parseInt(stock, 10));
+    else if (delta !== undefined) newStock = Math.max(0, (target.stock || 50) + parseInt(delta, 10));
+    target.stock = newStock;
+  }
+
+  if (pool) {
+    try {
+      await pool.query(
+        `UPDATE kirana_catalog
+         SET payload = jsonb_set(payload, '{stock}', to_jsonb($1::int))
+         WHERE sku_code = $2`,
+        [newStock, sku]
+      );
+    } catch (err) {
+      console.error("Neon DB Stock Update Error:", err.message);
+    }
+  }
+
+  res.json({ status: 'ok', sku, stock: newStock });
 });
 
 // 4. Admin Add Custom Item to Catalog (with Image URL and Custom Category)

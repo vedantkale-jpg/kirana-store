@@ -577,14 +577,16 @@
             <p class="text-xs text-slate-400 mt-0.5">Live real-time order feed: Customer orders appear automatically without refreshing the page.</p>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-xs">
-            <!-- Date Filter (Today, Yesterday, All) -->
+            <!-- Dynamic Date Filter (Today, Yesterday, Custom Date Picker, All) -->
             <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1">
-              <span class="text-slate-400">📅 Date:</span>
+              <span class="text-slate-400 text-xs">📅 Date:</span>
               <select id="adminOrderDateFilter" class="bg-transparent text-amber-300 font-bold outline-none text-xs cursor-pointer">
                 <option value="all">All Dates History</option>
-                <option value="today" selected>Today (05 Nov 2026)</option>
-                <option value="yesterday">Yesterday</option>
+                <option value="today" id="optToday" selected>Today (Live)</option>
+                <option value="yesterday" id="optYesterday">Yesterday (Live)</option>
+                <option value="custom">📅 Pick Specific Date...</option>
               </select>
+              <input id="adminCustomDatePicker" type="date" class="hidden bg-slate-950 text-amber-300 border border-slate-600 rounded-md px-1.5 py-0.5 text-xs font-mono outline-none cursor-pointer" />
             </div>
 
             <!-- Status Filter -->
@@ -877,8 +879,8 @@
   <!-- ====================================================================== -->
   <div id="cartDrawerBackdrop" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 hidden"></div>
   <aside id="cartDrawer" class="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white z-50 shadow-2xl border-l border-slate-200 flex flex-col translate-x-full transition-transform duration-200">
-    <!-- Cart Header -->
-    <div class="p-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0">
+    <!-- Cart Header (Fixed Top) -->
+    <div class="p-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
       <div class="flex items-center gap-2.5">
         <span class="text-xl">🛒</span>
         <div>
@@ -892,28 +894,28 @@
       </div>
     </div>
 
-    <!-- Compact Mode & Customer Address Selector -->
-    <div class="p-2.5 bg-slate-50 border-b border-slate-200 space-y-2 shrink-0">
-      <div class="grid grid-cols-2 gap-1.5 bg-slate-200/80 p-1 rounded-xl text-xs font-bold">
-        <button id="btnModePos" type="button" class="py-1 rounded-lg bg-white text-slate-900 shadow-xs transition">🏪 Counter Pickup</button>
-        <button id="btnModeDelivery" type="button" class="py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">🛵 Home Delivery</button>
+    <!-- Unified Scrollable Body with Visible Custom Scrollbar ("कर्सर") and overscroll-contain -->
+    <div id="cartDrawerScrollArea" class="flex-1 overflow-y-auto overscroll-contain p-3.5 space-y-3 custom-cart-scroll min-h-0">
+      <!-- Mode & Customer Address Selector -->
+      <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+        <div class="grid grid-cols-2 gap-1.5 bg-slate-200/80 p-1 rounded-xl text-xs font-bold">
+          <button id="btnModePos" type="button" class="py-1 rounded-lg bg-white text-slate-900 shadow-xs transition">🏪 Counter Pickup</button>
+          <button id="btnModeDelivery" type="button" class="py-1 rounded-lg text-slate-600 hover:text-slate-900 transition">🛵 Home Delivery</button>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <input id="custNameInput" type="text" placeholder="Your Name" value="" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500 font-medium" />
+          <input id="custPhoneInput" type="tel" maxlength="10" placeholder="10-Digit Mobile" value="" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500 font-medium" />
+        </div>
+        <div id="cartDeliveryAddressBox">
+          <input id="custAddressInput" type="text" placeholder="Delivery Address (Flat / House, Area, Pincode)" value="" class="w-full text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500 font-medium" />
+        </div>
       </div>
-      <div class="grid grid-cols-2 gap-1.5">
-        <input id="custNameInput" type="text" placeholder="Your Name" value="" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:border-emerald-500 font-medium" />
-        <input id="custPhoneInput" type="tel" maxlength="10" placeholder="10-Digit Mobile" value="" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:border-emerald-500 font-medium" />
-      </div>
-      <div id="cartDeliveryAddressBox">
-        <input id="custAddressInput" type="text" placeholder="Delivery Address (Flat / House, Area, Pincode)" value="" class="w-full text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:border-emerald-500 font-medium" />
-      </div>
-    </div>
 
-    <!-- Scrollable Items List with Prominent Visible Scrollbar ("Cursor") -->
-    <div id="cartItemsList" class="flex-1 overflow-y-scroll p-3.5 space-y-2.5 custom-cart-scroll" style="min-height: 220px; max-height: 48vh;"></div>
+      <!-- Items List -->
+      <div id="cartItemsList" class="space-y-2"></div>
 
-    <!-- Compact Bottom Checkout & Bill Summary -->
-    <div class="p-3.5 bg-white border-t border-slate-200 shadow-lg space-y-2.5 shrink-0">
       <!-- Compact Promo Code Box -->
-      <div class="bg-slate-50 border border-slate-200 rounded-xl p-2 space-y-1 text-xs">
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-1.5 text-xs">
         <div class="flex items-center justify-between font-bold text-slate-700 text-[11px]">
           <span>🏷️ Have a Coupon?</span>
           <span class="text-[10px] text-emerald-600 font-mono">KIRANA50 / WELCOME20</span>
@@ -923,20 +925,20 @@
             id="couponCodeInput"
             type="text"
             placeholder="PROMO CODE"
-            class="flex-1 uppercase bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-slate-800 outline-none"
+            class="flex-1 uppercase bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 outline-none"
           />
-          <button id="btnApplyCoupon" type="button" class="px-3.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs">
+          <button id="btnApplyCoupon" type="button" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs">
             Apply
           </button>
         </div>
-        <div id="couponAppliedBadgeRow" class="hidden flex items-center justify-between bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-lg font-bold text-[11px]">
+        <div id="couponAppliedBadgeRow" class="hidden flex items-center justify-between bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg font-bold text-[11px]">
           <span id="couponAppliedText">✓ Applied</span>
           <button id="btnRemoveCoupon" type="button" class="text-rose-600 text-[10px] font-bold hover:underline">✕ Remove</button>
         </div>
       </div>
 
       <!-- Compact Bill Breakdown Table -->
-      <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200 text-xs space-y-1">
+      <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1.5">
         <div class="flex justify-between text-slate-500">
           <span>Items MRP</span>
           <span id="billMrpTotal" class="font-medium text-slate-700">₹0</span>
@@ -953,31 +955,123 @@
           <span>Delivery Charge</span>
           <span id="billDeliveryFee" class="text-emerald-700 font-bold">FREE</span>
         </div>
-        <div class="border-t border-slate-200 pt-1 flex justify-between text-sm font-extrabold text-slate-900">
+        <div class="border-t border-slate-200 pt-1.5 flex justify-between text-sm font-extrabold text-slate-900">
           <span>Net Payable</span>
           <span id="billGrandTotal" class="text-base text-emerald-700">₹0</span>
         </div>
       </div>
-
-      <!-- Compact Payment Buttons -->
-      <div class="space-y-1.5 pt-0.5">
-        <button id="btnPayRazorpay" type="button" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-extrabold text-xs shadow-md shadow-indigo-600/20 flex items-center justify-between transition">
-          <span class="flex items-center gap-1.5">
-            <span>💳 Pay Online</span>
-            <span class="text-[9px] bg-indigo-500 px-1.5 py-0.5 rounded font-semibold">UPI / Card</span>
-          </span>
-          <span id="btnPayRazorpayAmt" class="font-bold text-sm">₹0 →</span>
-        </button>
-        <button id="btnPayUpiQr" type="button" class="w-full py-1.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition">
-          <span>📱 Scan Counter UPI QR Code (GPay / PhonePe / Paytm)</span>
-        </button>
-      </div>
     </div>
-  </aside>
+
+    <!-- Sticky Docked Bottom Payment Buttons (Always 100% visible on any screen) -->
+    <div class="p-3 bg-white border-t border-slate-200 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] space-y-1.5 shrink-0 z-10">
+      <button id="btnPayRazorpay" type="button" class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-extrabold text-xs shadow-md shadow-indigo-600/20 flex items-center justify-between transition cursor-pointer">
+        <span class="flex items-center gap-1.5">
+          <span>💳 Pay Online</span>
+          <span class="text-[9px] bg-indigo-500 px-1.5 py-0.5 rounded font-semibold">UPI / Card</span>
+        </span>
+        <span id="btnPayRazorpayAmt" class="font-bold text-sm">₹0 →</span>
+      </button>
+      <button id="btnPayUpiQr" type="button" class="w-full py-1.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer">
+        <span>📱 Scan Counter UPI QR Code (GPay / PhonePe / Paytm)</span>
+      </button>
+    </div>  </aside>
 
   <!-- ====================================================================== -->
   <!-- 7. PAYMENT MODAL                                                       -->
   <!-- ====================================================================== -->
+  <!-- ============================================================
+       OFFICIAL CASH MEMO & INVOICE MODAL (PRINTABLE / DOWNLOADABLE)
+       ============================================================ -->
+  <div id="invoiceModal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-xs z-50 hidden items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 my-auto text-slate-800">
+      <!-- Invoice Action Bar -->
+      <div class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between print:hidden">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🧾</span>
+          <span class="font-bold text-sm">Official Tax Invoice / Cash Receipt</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnPrintInvoice" type="button" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs cursor-pointer">
+            🖨️ Print / Save PDF
+          </button>
+          <button id="btnCloseInvoiceModal" type="button" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 text-xs transition cursor-pointer">✕</button>
+        </div>
+      </div>
+
+      <!-- Printable Invoice Sheet -->
+      <div id="invoicePrintContent" class="p-5 sm:p-6 space-y-4 text-xs font-sans">
+        <!-- Store Header -->
+        <div class="border-b border-slate-200 pb-3 text-center space-y-1">
+          <h2 class="text-xl font-extrabold text-slate-900 tracking-tight">KIRANA SHOP SUPER STORE</h2>
+          <p class="text-[11px] text-emerald-700 font-bold">Aapki Apni Kirana Dukan — Daily Items at Wholesale Kirana Rates</p>
+          <p class="text-[10px] text-slate-500">Main Market, Near Bus Stand, Wani, Maharashtra • Support: +91 7420828705</p>
+          <p class="text-[9px] font-mono text-slate-400">GSTIN: 27AABCK1234F1Z8 • FSSAI Lic: 11521034000123</p>
+        </div>
+
+        <!-- Order & Customer Meta Info -->
+        <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px]">
+          <div>
+            <div class="text-slate-500">Order ID: <strong id="invOrderId" class="text-slate-900 font-mono">#ORD-0000</strong></div>
+            <div class="text-slate-500">Date: <strong id="invOrderDate" class="text-slate-900">07 Nov 2026</strong></div>
+            <div class="text-slate-500">Mode: <strong id="invOrderMode" class="text-slate-900">Counter Pickup</strong></div>
+          </div>
+          <div class="text-right">
+            <div class="text-slate-500">Customer: <strong id="invCustName" class="text-slate-900">Vedant Kale</strong></div>
+            <div class="text-slate-500">Phone: <strong id="invCustPhone" class="text-slate-900 font-mono">7420828705</strong></div>
+            <div class="text-slate-500 truncate">Payment: <strong id="invPaymentRef" class="text-emerald-700">PAID (UPI)</strong></div>
+          </div>
+        </div>
+
+        <!-- Itemized Table -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <table class="w-full text-left text-[11px]">
+            <thead class="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
+              <tr>
+                <th class="py-2 px-2.5">Item</th>
+                <th class="py-2 px-1 text-center">Qty</th>
+                <th class="py-2 px-1.5 text-right">Price</th>
+                <th class="py-2 px-2.5 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="invItemsBody" class="divide-y divide-slate-100">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Bill Totals Breakdown -->
+        <div class="space-y-1 pt-1 text-[11px]">
+          <div class="flex justify-between text-slate-500">
+            <span>Items MRP Total</span>
+            <span id="invMrpTotal" class="font-medium text-slate-700">₹0</span>
+          </div>
+          <div class="flex justify-between text-emerald-700 font-semibold">
+            <span>Wholesale Discount</span>
+            <span id="invDiscountTotal">- ₹0</span>
+          </div>
+          <div id="invCouponRow" class="hidden flex justify-between text-emerald-700 font-semibold">
+            <span>Coupon Discount</span>
+            <span id="invCouponDiscount">- ₹0</span>
+          </div>
+          <div class="flex justify-between text-slate-600">
+            <span>Delivery Fee</span>
+            <span id="invDeliveryFee" class="font-medium text-slate-900">FREE</span>
+          </div>
+          <div class="border-t-2 border-slate-900 pt-1.5 flex justify-between text-sm font-extrabold text-slate-900">
+            <span>Total Paid (Net Amount)</span>
+            <span id="invGrandTotal" class="text-base text-emerald-700">₹0</span>
+          </div>
+        </div>
+
+        <!-- Footer Note -->
+        <div class="text-center text-[10px] text-slate-400 border-t border-dashed border-slate-200 pt-3">
+          <p>Thank you for shopping at Kirana Shop! Visit again.</p>
+          <p class="text-[9px] mt-0.5">This is a computer-generated tax invoice and requires no signature.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="paymentModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
     <div class="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
       <div class="bg-gradient-to-r from-indigo-700 to-blue-600 text-white p-4 flex items-center justify-between">
@@ -1686,6 +1780,73 @@
       // ====================================================================
       // ADMIN DASHBOARD & LIVE ORDERS FEED LOGIC
       // ====================================================================
+      
+      // Official Cash Memo & Tax Invoice Modal Logic
+      function showInvoiceModal(ord) {
+        if (!ord) return;
+        const modal = document.getElementById('invoiceModal');
+        if (!modal) return;
+
+        document.getElementById('invOrderId').textContent = '#' + (ord.order_id || 'ORD-0000');
+        document.getElementById('invOrderDate').textContent = ord.created_at || new Date().toLocaleDateString('en-IN');
+        document.getElementById('invOrderMode').textContent = ord.order_mode || 'Counter Pickup';
+        document.getElementById('invCustName').textContent = ord.customer_name || 'Customer';
+        document.getElementById('invCustPhone').textContent = ord.customer_phone || '-';
+        document.getElementById('invPaymentRef').textContent = 'PAID (' + (ord.payment_method || 'UPI') + ')';
+
+        const rawItems = Array.isArray(ord.items) ? ord.items : (ord.items ? JSON.parse(ord.items) : []);
+        const tbody = document.getElementById('invItemsBody');
+        tbody.innerHTML = rawItems.map(it => `
+          <tr>
+            <td class="py-1.5 px-2.5">
+              <div class="font-bold text-slate-800">${it.name}</div>
+              <div class="text-[10px] text-slate-400">${it.unit || ''}</div>
+            </td>
+            <td class="py-1.5 px-1 text-center font-bold text-slate-700">${it.qty}</td>
+            <td class="py-1.5 px-1.5 text-right font-medium text-slate-600">₹${it.price}</td>
+            <td class="py-1.5 px-2.5 text-right font-bold text-slate-900">₹${it.price * it.qty}</td>
+          </tr>
+        `).join('');
+
+        const mrp = ord.total_mrp || ord.total_amount || 0;
+        const savings = ord.total_savings || 0;
+        const net = ord.total_amount || 0;
+
+        document.getElementById('invMrpTotal').textContent = '₹' + mrp;
+        document.getElementById('invDiscountTotal').textContent = '- ₹' + savings;
+        document.getElementById('invGrandTotal').textContent = '₹' + net;
+
+        const couponRow = document.getElementById('invCouponRow');
+        if (couponRow) {
+          if (ord.discount_amount && ord.discount_amount > 0) {
+            couponRow.classList.remove('hidden');
+            document.getElementById('invCouponDiscount').textContent = '- ₹' + ord.discount_amount;
+          } else {
+            couponRow.classList.add('hidden');
+          }
+        }
+
+        const deliveryFeeEl = document.getElementById('invDeliveryFee');
+        if (deliveryFeeEl) {
+          deliveryFeeEl.textContent = (ord.delivery_fee && ord.delivery_fee > 0) ? ('₹' + ord.delivery_fee) : 'FREE';
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      safeAddListener('btnPrintInvoice', 'click', () => {
+        window.print();
+      });
+
+      safeAddListener('btnCloseInvoiceModal', 'click', () => {
+        const modal = document.getElementById('invoiceModal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        }
+      });
+
       function enterAdminDashboard() {
         state.isAdminLoggedIn = true;
         try { localStorage.setItem('kirana_owner_session', 'ACTIVE'); } catch (e) {}
@@ -1694,6 +1855,7 @@
         document.getElementById('mainAppWrapper').classList.add('hidden');
         document.getElementById('adminPanelView').classList.remove('hidden');
 
+        updateAdminDateLabels();
         fetchAdminOrders();
         fetchAdminAnalytics();
         fetchAdminLowStock();
@@ -1761,18 +1923,26 @@
         }
       }
 
-      // Fetch Analytics from Backend (GET /api/admin/analytics)
+      // Fetch Analytics from Backend with Selected Date Filter (GET /api/admin/analytics?date=...)
       async function fetchAdminAnalytics() {
+        const filterVal = state.adminDateFilter || 'today';
         try {
-          const res = await fetch('/api/admin/analytics');
+          const res = await fetch('/api/admin/analytics?date=' + encodeURIComponent(filterVal));
           if (res.ok) {
             const data = await res.json();
-            document.getElementById('statTodayRevenue').textContent = '₹' + (data.today_revenue || 0).toLocaleString();
-            document.getElementById('statTodayOrdersCount').textContent = data.today_orders || 0;
-            document.getElementById('statTotalRevenue').textContent = '₹' + (data.total_revenue || 0).toLocaleString();
-            document.getElementById('statTotalOrders').textContent = data.total_orders || 0;
-            document.getElementById('statPendingOrders').textContent = data.pending_orders || 0;
-            document.getElementById('statDeliveredOrders').textContent = data.delivered_orders || 0;
+            const periodRev = (data.period_revenue !== undefined) ? data.period_revenue : (data.today_revenue || 0);
+            const periodOrders = (data.period_orders !== undefined) ? data.period_orders : (data.today_orders || 0);
+            const lifetimeRev = (data.lifetime_revenue !== undefined) ? data.lifetime_revenue : (data.total_revenue || 0);
+            const lifetimeOrders = (data.lifetime_orders !== undefined) ? data.lifetime_orders : (data.total_orders || 0);
+            const pending = (data.period_pending !== undefined) ? data.period_pending : (data.pending_orders || 0);
+            const delivered = (data.period_delivered !== undefined) ? data.period_delivered : (data.delivered_orders || 0);
+
+            document.getElementById('statTodayRevenue').textContent = '₹' + periodRev.toLocaleString();
+            document.getElementById('statTodayOrdersCount').textContent = periodOrders;
+            document.getElementById('statTotalRevenue').textContent = '₹' + lifetimeRev.toLocaleString();
+            document.getElementById('statTotalOrders').textContent = lifetimeOrders;
+            document.getElementById('statPendingOrders').textContent = pending;
+            document.getElementById('statDeliveredOrders').textContent = delivered;
             return;
           }
         } catch (e) {}
@@ -1788,6 +1958,20 @@
         document.getElementById('statTotalOrders').textContent = list.length;
         document.getElementById('statPendingOrders').textContent = pending;
         document.getElementById('statDeliveredOrders').textContent = delivered;
+      }
+
+      // Dynamic Live Date Label Updater for Admin Date Dropdown
+      function updateAdminDateLabels() {
+        const now = new Date();
+        const dateOpts = { day: '2-digit', month: 'short', year: 'numeric' };
+        const todayStr = now.toLocaleDateString('en-IN', dateOpts);
+        const yest = new Date(now.getTime() - 86400000);
+        const yestStr = yest.toLocaleDateString('en-IN', dateOpts);
+
+        const optToday = document.getElementById('optToday');
+        if (optToday) optToday.textContent = `Today (${todayStr})`;
+        const optYest = document.getElementById('optYesterday');
+        if (optYest) optYest.textContent = `Yesterday (${yestStr})`;
       }
 
       // Render Admin Live Orders
@@ -1859,7 +2043,11 @@
                         <option value="CANCELLED" ${ord.status === 'CANCELLED' ? 'selected' : ''}>Cancel Order</option>
                       </select>
                     </div>
-                    <button type="button" data-del-order-id="${ord.order_id}" class="admin-del-order-btn px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-xs font-bold transition flex items-center gap-1" title="Delete order permanently">
+                    <button type="button" data-inv-order-id="${ord.order_id}" class="admin-inv-order-btn px-2 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500 text-indigo-300 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="View & Print Official Cash Invoice">
+                      <span>🧾</span>
+                      <span>Invoice</span>
+                    </button>
+                    <button type="button" data-del-order-id="${ord.order_id}" class="admin-del-order-btn px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer" title="Delete order permanently">
                       <span>🗑️</span>
                       <span>Delete</span>
                     </button>
@@ -1881,6 +2069,15 @@
             const orderId = sel.getAttribute('data-order-status-id');
             const newStatus = e.target.value;
             await updateOrderStatus(orderId, newStatus);
+          });
+        });
+
+        // Attach Invoice Button Listener
+        container.querySelectorAll('.admin-inv-order-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const orderId = btn.getAttribute('data-inv-order-id');
+            const ord = state.adminLiveOrders.find(o => o.order_id === orderId) || state.orders.find(o => o.order_id === orderId);
+            if (ord) showInvoiceModal(ord);
           });
         });
 
@@ -1929,8 +2126,28 @@
       });
 
       safeAddListener('adminOrderDateFilter', 'change', (e) => {
-        state.adminDateFilter = e.target.value;
+        const val = e.target.value;
+        const picker = document.getElementById('adminCustomDatePicker');
+        if (val === 'custom') {
+          if (picker) {
+            picker.classList.remove('hidden');
+            picker.focus();
+          }
+          return;
+        }
+        if (picker) picker.classList.add('hidden');
+        state.adminDateFilter = val;
         fetchAdminOrders();
+        fetchAdminAnalytics();
+      });
+
+      safeAddListener('adminCustomDatePicker', 'change', (e) => {
+        const pickedDate = e.target.value; // Format: YYYY-MM-DD
+        if (pickedDate) {
+          state.adminDateFilter = pickedDate;
+          fetchAdminOrders();
+          fetchAdminAnalytics();
+        }
       });
 
       // Auto Delivery Simulator (Demonstrates live progression from NEW -> PACKED -> OUT_FOR_DELIVERY -> DELIVERED)
@@ -1972,23 +2189,61 @@
         document.getElementById('adminOrdersSection').classList.add('hidden');
       });
 
-      // Admin Inventory Search & Render
+      // Admin Inventory Search & Render with Live Stock & Quick Adjust (-5 / +10)
       function renderAdminInventory(filterText = '') {
         const grid = document.getElementById('adminInventoryGrid');
         const q = filterText.toLowerCase().trim();
         const items = catalog.filter(i => !i.hidden && (!q || i.name.toLowerCase().includes(q) || i.brand.toLowerCase().includes(q))).slice(0, 30);
 
-        grid.innerHTML = items.map(item => `
-          <div class="bg-slate-900 border border-slate-700/80 rounded-2xl p-3 flex items-center justify-between gap-3">
+        grid.innerHTML = items.map(item => {
+          const stock = (item.stock !== undefined) ? item.stock : 50;
+          const badgeClass = stock > 10 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                             stock > 0  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+                                          'bg-rose-500/20 text-rose-300 border-rose-500/30';
+          return `
+          <div class="bg-slate-900 border border-slate-700/80 rounded-2xl p-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
             <div class="min-w-0 flex-1">
               <div class="text-xs font-bold text-white truncate">${item.name}</div>
               <div class="text-[11px] text-slate-400 mt-0.5">${item.unit} • Selling: <strong class="text-emerald-400">₹${item.price}</strong> (MRP ₹${item.mrp})</div>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${badgeClass}">
+                  📦 Available Stock: <strong class="text-white">${stock} units</strong>
+                </span>
+              </div>
             </div>
-            <button type="button" data-del-sku="${item.sku}" class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-xs font-bold transition">
-              Remove
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" data-stock-delta="-5" data-sku="${item.sku}" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white rounded-lg text-xs font-bold border border-slate-700 transition cursor-pointer" title="Decrease stock by 5">−5</button>
+              <span class="w-10 text-center text-xs font-mono font-bold text-amber-300 bg-slate-950 px-1 py-1 rounded-lg border border-slate-700">${stock}</span>
+              <button type="button" data-stock-delta="10" data-sku="${item.sku}" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white rounded-lg text-xs font-bold border border-slate-700 transition cursor-pointer" title="Add 10 units stock">+10</button>
+              <button type="button" data-del-sku="${item.sku}" class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-xs font-bold transition cursor-pointer">
+                Remove
+              </button>
+            </div>
           </div>
-        `).join('');
+        `}).join('');
+
+        // Stock quick adjust handlers (-5 / +10)
+        grid.querySelectorAll('[data-stock-delta]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const sku = btn.getAttribute('data-sku');
+            const delta = parseInt(btn.getAttribute('data-stock-delta'), 10);
+            const target = catalog.find(i => i.sku === sku);
+            if (target) {
+              target.stock = Math.max(0, ((target.stock !== undefined) ? target.stock : 50) + delta);
+              renderAdminInventory(document.getElementById('adminInventorySearch').value);
+              try {
+                await fetch('/api/admin/products/' + encodeURIComponent(sku) + '/stock', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ delta })
+                });
+                showToast(`📦 Stock updated: ${target.name.substring(0, 20)}... → ${target.stock} units`);
+              } catch (e) {
+                console.error('Failed to sync stock delta to backend:', e);
+              }
+            }
+          });
+        });
 
         grid.querySelectorAll('[data-del-sku]').forEach(btn => {
           btn.addEventListener('click', async () => {
@@ -2617,18 +2872,31 @@
                 </div>
               </div>
               <div class="flex flex-wrap gap-1.5">${itemsHtml}</div>
-              ${ord.status === 'NEW' ? `
-                <div class="pt-1 flex justify-end">
+              <div class="pt-1 flex items-center justify-end gap-2">
+                <button type="button" data-cust-inv-id="${ord.order_id}" class="text-xs text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1 rounded-xl font-bold transition flex items-center gap-1 cursor-pointer">
+                  <span>🧾</span>
+                  <span>View Receipt</span>
+                </button>
+                ${ord.status === 'NEW' ? `
                   <button type="button" data-cust-cancel-order="${ord.order_id}" class="text-xs text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1 rounded-xl font-bold transition flex items-center gap-1">
                     <span>✕</span>
                     <span>Cancel Order</span>
                   </button>
-                </div>
-              ` : ''}
+                ` : ''}
+              </div>
               ${trackerHtml}
             </div>
           `;
         }).join('');
+        // Attach Receipt / Invoice Button Listener
+        profOrders.querySelectorAll('[data-cust-inv-id]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const orderId = btn.getAttribute('data-cust-inv-id');
+            const ord = state.orders.find(o => o.order_id === orderId) || state.adminLiveOrders.find(o => o.order_id === orderId);
+            if (ord) showInvoiceModal(ord);
+          });
+        });
+
       profOrders.querySelectorAll('[data-cust-cancel-order]').forEach(btn => {
           btn.addEventListener('click', async () => {
             const orderId = btn.getAttribute('data-cust-cancel-order');
@@ -3187,6 +3455,8 @@
 
       // Initial Render
       renderAll();
+
+      updateAdminDateLabels();
 
       // AUTO-RESTORE SESSION ON PAGE REFRESH (Fixes admin getting kicked out)
       try {

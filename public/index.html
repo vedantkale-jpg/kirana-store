@@ -622,7 +622,7 @@
       <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4 sm:p-5 space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 class="text-base font-extrabold text-white">Kirana Shop Inventory (10,500+ SKUs)</h3>
+            <h3 class="text-base font-extrabold text-white">Kirana Shop Inventory</h3>
             <p class="text-xs text-slate-400 mt-0.5">Search any item to change price, update stock, or remove from customer view</p>
           </div>
           <div class="w-full sm:w-72">
@@ -1304,7 +1304,7 @@
         { cat: 'snacks', photoKey: 'snacks', sub: 'Biscuits & Cookies', icon: '🍪', base: 'Gluco, Marie Gold, Good Day & Bourbon', brands: ['Parle-G', 'Britannia', 'Sunfeast'], units: [['Pocket Pack', 5, 5], ['Regular Pack', 10, 10], ['Family Pack', 25, 30]] },
         { cat: 'snacks', photoKey: 'snacks', sub: 'Namkeen & Bhujia', icon: '🥨', base: 'Aloo Bhujia, Bikaneri Sev & Moong Dal', brands: ['Haldiram\'s', 'Bikaji', 'Balaji'], units: [['35 g Pouch', 10, 10], ['80 g Pack', 20, 22], ['150 g Pack', 38, 44]] },
         { cat: 'snacks', photoKey: 'snacks', sub: 'Potato Chips & Crisps', icon: '🥔', base: 'Magic Masala & Cream Onion Wafers', brands: ['Lay\'s', 'Kurkure', 'Balaji'], units: [['Small Pack', 10, 10], ['Medium Pack', 20, 20], ['Party Pack', 35, 40]] },
-        { cat: 'staples', photoKey: 'staples', sub: 'Chakki Atta & Flours', icon: '🌾', base: 'Shudh Chakki Whole Wheat Atta', brands: ['Aashirvaad', 'Fortune', 'Patanjali'], units: [['500 g', 28, 32], ['1 kg', 48, 56], ['5 kg Bag', 235, 265], ['10 kg Sack', 445, 495]] },
+        { cat: 'staples', photoKey: 'staples', sub: 'Chakki Atta & Flours', icon: '🌾', base: 'Chakki Fresh Whole Wheat Atta', brands: ['Aashirvaad', 'Fortune', 'Patanjali'], units: [['500 g', 28, 32], ['1 kg', 48, 56], ['5 kg Bag', 235, 265], ['10 kg Sack', 445, 495]] },
         { cat: 'staples', photoKey: 'staples', sub: 'Basmati & Daily Rice', icon: '🍚', base: 'Rozana Basmati & Surti Kolam Steam Rice', brands: ['India Gate', 'Daawat', 'Fortune'], units: [['500 g', 42, 49], ['1 kg', 79, 95], ['5 kg Bag', 375, 440]] },
         { cat: 'staples', photoKey: 'pulses', sub: 'Toor & Moong Dal', icon: '🥣', base: 'Unpolished Arhar Toor Dal & Yellow Moong', brands: ['Tata Sampann', 'Fortune', 'Rajdhani'], units: [['250 g', 36, 42], ['500 g', 72, 84], ['1 kg', 138, 160]] },
         { cat: 'staples', photoKey: 'staples', sub: 'Salt & Sugar', icon: '🧂', base: 'Iodised Salt & Crystal White Sugar', brands: ['Tata Salt', 'Madhur', 'Aashirvaad'], units: [['500 g Pack', 18, 22], ['1 kg Pack', 28, 32]] },
@@ -2189,11 +2189,48 @@
         document.getElementById('adminOrdersSection').classList.add('hidden');
       });
 
-      // Admin Inventory Search & Render with Live Stock & Quick Adjust (-5 / +10)
+      // Admin Inventory Search & Render with Smart Multi-Word Search & Live Stock Adjust
       function renderAdminInventory(filterText = '') {
         const grid = document.getElementById('adminInventoryGrid');
-        const q = filterText.toLowerCase().trim();
-        const items = catalog.filter(i => !i.hidden && (!q || i.name.toLowerCase().includes(q) || i.brand.toLowerCase().includes(q))).slice(0, 30);
+        if (!grid) return;
+
+        const qRaw = filterText.toLowerCase().trim();
+        // Normalize common variants: aashirvad -> aashirvaad, shudh -> fresh, etc.
+        const qNorm = qRaw.replace(/\baashirvad\b/g, 'aashirvaad').replace(/\bshudh\b/g, 'fresh');
+        const qWords = qNorm.split(/[\s,()\-]+/).filter(w => w.length > 0);
+
+        const items = catalog.filter(i => {
+          if (i.hidden) return false;
+          if (!qWords.length) return true;
+          const targetStr = (i.name + ' ' + (i.brand || '') + ' ' + (i.sku || '') + ' ' + (i.unit || '')).toLowerCase();
+          // Match if all search words appear in the target string or match common synonyms
+          return qWords.every(w => {
+            if (targetStr.includes(w)) return true;
+            if (w === 'fresh' && targetStr.includes('shudh')) return true;
+            if (w === 'shudh' && targetStr.includes('fresh')) return true;
+            if (w.length >= 4 && targetStr.includes(w.substring(0, w.length - 1))) return true;
+            return false;
+          });
+        }).slice(0, 50);
+
+        if (items.length === 0) {
+          grid.innerHTML = `
+            <div class="col-span-full py-12 text-center text-slate-400">
+              <div class="text-3xl mb-2">🔍</div>
+              <div class="text-sm font-bold text-slate-300">No items found matching "${filterText}"</div>
+              <div class="text-xs text-slate-500 mt-1">Try searching with a shorter keyword like "Atta", "Aashirvaad", or "Oil".</div>
+              <button id="btnClearInventorySearch" type="button" class="mt-3 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-300 text-xs font-bold rounded-xl border border-slate-700 transition cursor-pointer">
+                Clear Search
+              </button>
+            </div>
+          `;
+          document.getElementById('btnClearInventorySearch')?.addEventListener('click', () => {
+            const input = document.getElementById('adminInventorySearch');
+            if (input) input.value = '';
+            renderAdminInventory('');
+          });
+          return;
+        }
 
         grid.innerHTML = items.map(item => {
           const stock = (item.stock !== undefined) ? item.stock : 50;
@@ -2230,7 +2267,7 @@
             const target = catalog.find(i => i.sku === sku);
             if (target) {
               target.stock = Math.max(0, ((target.stock !== undefined) ? target.stock : 50) + delta);
-              renderAdminInventory(document.getElementById('adminInventorySearch').value);
+              renderAdminInventory(document.getElementById('adminInventorySearch')?.value || '');
               try {
                 await fetch('/api/admin/products/' + encodeURIComponent(sku) + '/stock', {
                   method: 'PATCH',
@@ -2251,7 +2288,7 @@
             const target = catalog.find(i => i.sku === sku);
             if (target) {
               target.hidden = true;
-              renderAdminInventory(document.getElementById('adminInventorySearch').value);
+              renderAdminInventory(document.getElementById('adminInventorySearch')?.value || '');
               renderProducts();
               try { await fetch('/api/admin/products/' + sku, { method: 'DELETE' }); } catch (e) {}
               showToast('Removed ' + target.name + ' from inventory.');
@@ -3251,15 +3288,52 @@
             const box = document.getElementById('adminLowStockAlertBox');
             const badge = document.getElementById('lowStockCountBadge');
             const list = document.getElementById('lowStockItemsList');
+            if (!box || !badge || !list) return;
 
             if (data.count > 0) {
               box.classList.remove('hidden');
               badge.textContent = data.count + ' Items';
+
+              // Synchronize DB low stock items into client catalog array so they are 100% searchable
+              data.low_stock_items.forEach(dbItem => {
+                let existing = catalog.find(c => c.sku === dbItem.sku_code || c.name.toLowerCase() === (dbItem.name || '').toLowerCase());
+                if (existing) {
+                  existing.stock = dbItem.stock;
+                } else {
+                  catalog.unshift({
+                    id: dbItem.sku_code,
+                    sku: dbItem.sku_code,
+                    name: dbItem.name,
+                    brand: dbItem.brand || 'Aashirvaad',
+                    category: 'staples',
+                    unit: dbItem.unit || '1 kg',
+                    price: dbItem.price || 48,
+                    mrp: (dbItem.price || 48) + 8,
+                    stock: dbItem.stock
+                  });
+                }
+              });
+
               list.innerHTML = data.low_stock_items.map(it => `
-                <div class="bg-rose-950/70 border border-rose-500/40 rounded-xl px-2.5 py-1 text-slate-200 text-xs flex items-center gap-1.5">
+                <button type="button" data-view-stock-name="${it.name}" class="bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 rounded-xl px-2.5 py-1 text-slate-200 text-xs flex items-center gap-1.5 transition cursor-pointer" title="Click to view & restock this item in inventory">
                   <strong class="text-rose-400 font-bold">${it.stock} Left</strong> • ${it.name} (${it.unit})
-                </div>
+                </button>
               `).join('');
+
+              // Clicking a low stock pill instantly filters the inventory to that item
+              list.querySelectorAll('[data-view-stock-name]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                  document.getElementById('adminTabInventory')?.click();
+                  const itemName = btn.getAttribute('data-view-stock-name');
+                  const searchInput = document.getElementById('adminInventorySearch');
+                  if (searchInput) {
+                    searchInput.value = itemName;
+                    renderAdminInventory(itemName);
+                    searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    searchInput.focus();
+                  }
+                });
+              });
             } else {
               box.classList.add('hidden');
             }

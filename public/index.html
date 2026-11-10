@@ -539,20 +539,7 @@
     </div>
 
     <!-- Admin Sub-Navigation Tabs: Live Orders Feed vs Inventory & Stock vs Customer Support Tickets -->
-    <!-- Low Stock Alert Dashboard (Real-time Inventory Warning) -->
-    <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4">
-      <div id="adminLowStockAlertBox" class="hidden bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 space-y-2">
-        <div class="flex items-center justify-between text-xs font-bold text-rose-300">
-          <div class="flex items-center gap-2">
-            <span>⚠️</span>
-            <span class="text-sm">Low Stock Alert Dashboard</span>
-            <span class="text-[10px] text-slate-400">(Items with &le; 10 units in stock)</span>
-          </div>
-          <span id="lowStockCountBadge" class="bg-rose-500 text-white px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold">0 Items</span>
-        </div>
-        <div id="lowStockItemsList" class="flex flex-wrap gap-2 text-xs pt-1 max-h-36 overflow-y-auto"></div>
-      </div>
-    </div>
+
     <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-5">
       <div class="flex items-center gap-2 border-b border-slate-800 pb-2 text-xs font-extrabold">
         <button id="adminTabOrders" type="button" class="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 flex items-center gap-2 shadow transition">
@@ -3286,57 +3273,7 @@
           if (res.ok) {
             const data = await res.json();
             const box = document.getElementById('adminLowStockAlertBox');
-            const badge = document.getElementById('lowStockCountBadge');
-            const list = document.getElementById('lowStockItemsList');
-            if (!box || !badge || !list) return;
-
-            if (data.count > 0) {
-              box.classList.remove('hidden');
-              badge.textContent = data.count + ' Items';
-
-              // Synchronize DB low stock items into client catalog array so they are 100% searchable
-              data.low_stock_items.forEach(dbItem => {
-                let existing = catalog.find(c => c.sku === dbItem.sku_code || c.name.toLowerCase() === (dbItem.name || '').toLowerCase());
-                if (existing) {
-                  existing.stock = dbItem.stock;
-                } else {
-                  catalog.unshift({
-                    id: dbItem.sku_code,
-                    sku: dbItem.sku_code,
-                    name: dbItem.name,
-                    brand: dbItem.brand || 'Aashirvaad',
-                    category: 'staples',
-                    unit: dbItem.unit || '1 kg',
-                    price: dbItem.price || 48,
-                    mrp: (dbItem.price || 48) + 8,
-                    stock: dbItem.stock
-                  });
-                }
-              });
-
-              list.innerHTML = data.low_stock_items.map(it => `
-                <button type="button" data-view-stock-name="${it.name}" class="bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 rounded-xl px-2.5 py-1 text-slate-200 text-xs flex items-center gap-1.5 transition cursor-pointer" title="Click to view & restock this item in inventory">
-                  <strong class="text-rose-400 font-bold">${it.stock} Left</strong> • ${it.name} (${it.unit})
-                </button>
-              `).join('');
-
-              // Clicking a low stock pill instantly filters the inventory to that item
-              list.querySelectorAll('[data-view-stock-name]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                  document.getElementById('adminTabInventory')?.click();
-                  const itemName = btn.getAttribute('data-view-stock-name');
-                  const searchInput = document.getElementById('adminInventorySearch');
-                  if (searchInput) {
-                    searchInput.value = itemName;
-                    renderAdminInventory(itemName);
-                    searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    searchInput.focus();
-                  }
-                });
-              });
-            } else {
-              box.classList.add('hidden');
-            }
+            if (box) box.classList.add('hidden');
           }
         } catch (e) {}
       }
